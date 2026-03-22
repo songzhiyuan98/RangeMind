@@ -70,38 +70,64 @@ struct HomeView: View {
             // Base dark
             Color.black
 
-            // Gradient mesh
+            // Primary mesh gradient - orange to purple
+            EllipticalGradient(
+                colors: [
+                    Color(hex: "FF6B35").opacity(0.35),
+                    Color(hex: "D63384").opacity(0.2),
+                    Color.clear
+                ],
+                center: .init(x: 0.15, y: 0.08),
+                startRadiusFraction: 0.0,
+                endRadiusFraction: 0.6
+            )
+
+            // Purple core glow - center
+            EllipticalGradient(
+                colors: [
+                    Color(hex: "7C3AED").opacity(0.3),
+                    Color(hex: "6D28D9").opacity(0.15),
+                    Color.clear
+                ],
+                center: .init(x: 0.6, y: 0.35),
+                startRadiusFraction: 0.0,
+                endRadiusFraction: 0.5
+            )
+
+            // Neon green accent - bottom left
+            EllipticalGradient(
+                colors: [
+                    Color(hex: "39FF14").opacity(0.08),
+                    Color(hex: "00FF88").opacity(0.04),
+                    Color.clear
+                ],
+                center: .init(x: 0.1, y: 0.85),
+                startRadiusFraction: 0.0,
+                endRadiusFraction: 0.4
+            )
+
+            // Pink accent - bottom right
+            EllipticalGradient(
+                colors: [
+                    Color(hex: "FF2D95").opacity(0.12),
+                    Color(hex: "FF6BC1").opacity(0.06),
+                    Color.clear
+                ],
+                center: .init(x: 0.85, y: 0.7),
+                startRadiusFraction: 0.0,
+                endRadiusFraction: 0.45
+            )
+
+            // Soft noise overlay for depth
             LinearGradient(
                 colors: [
-                    Color(hex: "0A0012"),
-                    Color(hex: "0D0620"),
-                    Color(hex: "08001A"),
-                    Color.black
+                    Color.clear,
+                    Color.black.opacity(0.3),
+                    Color.clear,
+                    Color.black.opacity(0.2)
                 ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            // Ambient glow - top
-            RadialGradient(
-                colors: [
-                    Color.vtAccent.opacity(0.08),
-                    Color.clear
-                ],
-                center: .init(x: 0.5, y: 0.2),
-                startRadius: 50,
-                endRadius: 300
-            )
-
-            // Ambient glow - bottom accent
-            RadialGradient(
-                colors: [
-                    Color(hex: "1A0533").opacity(0.5),
-                    Color.clear
-                ],
-                center: .init(x: 0.3, y: 0.8),
-                startRadius: 20,
-                endRadius: 250
+                startPoint: .top,
+                endPoint: .bottom
             )
         }
     }

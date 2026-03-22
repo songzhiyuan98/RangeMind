@@ -31,20 +31,22 @@ struct LiquidGlassDial: View {
 
     var body: some View {
         ZStack {
-            // Outer glow
+            // Outer glow - layered for depth
             Circle()
                 .fill(
                     RadialGradient(
                         colors: [
-                            progressColor.opacity(0.15),
+                            progressColor.opacity(0.2),
+                            progressColor.opacity(0.05),
                             .clear
                         ],
                         center: .center,
-                        startRadius: dialSize * 0.35,
-                        endRadius: dialSize * 0.65
+                        startRadius: dialSize * 0.3,
+                        endRadius: dialSize * 0.7
                     )
                 )
-                .frame(width: dialSize + 80, height: dialSize + 80)
+                .frame(width: dialSize + 100, height: dialSize + 100)
+                .blur(radius: 20)
 
             // Glass dial body
             ZStack {
