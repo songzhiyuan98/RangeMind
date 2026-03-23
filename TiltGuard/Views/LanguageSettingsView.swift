@@ -11,9 +11,9 @@ struct LanguageSettingsView: View {
             VStack(spacing: 24) {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(L10n.s(.languageDescription, lang))
-                        .font(.system(size: 12, design: .monospaced))
+                        .font(.system(size: 13, design: .monospaced))
                         .foregroundColor(.vtDim)
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, 24)
 
                     VStack(spacing: 0) {
                         ForEach(Array(AppLanguage.allCases.enumerated()), id: \.element.rawValue) { index, language in
@@ -25,7 +25,7 @@ struct LanguageSettingsView: View {
                                 HStack(spacing: 12) {
                                     Image(systemName: language.icon)
                                         .font(.system(size: 16))
-                                        .foregroundColor(languageManager.language == language ? .vtAccent : .vtDim)
+                                        .foregroundColor(languageManager.language == language ? .vtText : .vtDim)
                                         .frame(width: 24)
 
                                     VStack(alignment: .leading, spacing: 2) {
@@ -44,10 +44,10 @@ struct LanguageSettingsView: View {
                                     if languageManager.language == language {
                                         Image(systemName: "checkmark")
                                             .font(.system(size: 14, weight: .semibold))
-                                            .foregroundColor(.vtAccent)
+                                            .foregroundColor(.vtText)
                                     }
                                 }
-                                .padding(.horizontal, 16)
+                                .padding(.horizontal, 24)
                                 .padding(.vertical, 14)
                                 .contentShape(Rectangle())
                             }
@@ -57,17 +57,10 @@ struct LanguageSettingsView: View {
                                 Rectangle()
                                     .fill(Color.vtBorder)
                                     .frame(height: 0.5)
-                                    .padding(.horizontal, 16)
+                                    .padding(.horizontal, 24)
                             }
                         }
                     }
-                    .background(Color.vtSurface)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(Color.vtBorder, lineWidth: 1)
-                    )
-                    .padding(.horizontal, 20)
                 }
                 .padding(.top, 20)
             }

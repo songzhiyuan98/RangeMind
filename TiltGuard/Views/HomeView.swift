@@ -5,343 +5,333 @@ struct HomeView: View {
     @Environment(DataService.self) private var dataService
     @Environment(LanguageManager.self) private var languageManager
     @Binding var selectedTab: Int
-
-    @State private var selectedStrategy: PokerStrategy = .balanced
-    @State private var backgroundPhase: CGFloat = 0
+    @State private var showSessionSetup = false
+    @State private var selectedGameMode: GameMode = .cash
+    @State private var selectedTableSize: TableSize = .sixMax
+    @State private var selectedPokerTableStyle: PokerTableStyle = .standard
+    @State private var sessionTitle: String = ""
 
     private var lang: AppLanguage { languageManager.language }
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                // Animated gradient background
-                backgroundLayer
-                    .ignoresSafeArea()
+            ScrollView {
+                VStack(spacing: 0) {
+                    // Top bar
+                    topBar
+                        .padding(.horizontal, 20)
+                        .padding(.top, 12)
 
-                ScrollView {
-                    VStack(spacing: 0) {
-                        // Header
-                        header
-                            .padding(.top, 12)
-                            .padding(.bottom, 24)
+                    // VPIP number
+                    heroSection
+                        .padding(.top, 20)
+                        .padding(.bottom, 28)
 
-                        // VPIP Dial
-                        dialSection
-                            .padding(.bottom, 28)
+                    // Stats
+                    quickStats
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 28)
 
-                        // Strategy buttons
-                        strategyButtons
-                            .padding(.bottom, 20)
+                    // Start button
+                    Button {
+                        if dataService.hasActiveSession {
+                            selectedTab = 1
+                        } else {
+                            showSessionSetup = true
+                        }
+                    } label: {
+                        Text(L10n.s(dataService.hasActiveSession ? .continueSession : .startSession, lang))
+                            .font(.system(size: 16, weight: .semibold))
+                            .tracking(0.5)
+                            .foregroundColor(.vtBlack)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(Color.vtText)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(ScaleButtonStyle())
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 32)
 
-                        // Strategy insight card
-                        StrategyInsightCard(
-                            strategy: selectedStrategy,
-                            currentVPIP: dataService.lifetimeVPIP,
-                            lang: lang
-                        )
-                        .padding(.horizontal, 24)
-                        .padding(.bottom, 24)
+                    // Recent
+                    recentSection
+                        .padding(.bottom, 20)
+                }
+            }
+            .scrollIndicators(.hidden)
+            .background(Color.vtBlack.ignoresSafeArea())
+            .toolbar(.hidden, for: .navigationBar)
+            .sheet(isPresented: $showSessionSetup) {
+                sessionSetupSheet
+            }
+        }
+    }
 
-                        // Quick stats bar
-                        quickStatsBar
-                            .padding(.horizontal, 24)
-                            .padding(.bottom, 24)
+    // MARK: - Session Setup Sheet
 
-                        // Start / Continue button
-                        startButton
-                            .padding(.horizontal, 24)
-                            .padding(.bottom, 24)
+    private var sessionSetupSheet: some View {
+        VStack(spacing: 24) {
+            // Drag indicator
+            RoundedRectangle(cornerRadius: 2)
+                .fill(Color.vtBorder)
+                .frame(width: 36, height: 4)
+                .padding(.top, 12)
 
-                        // Recent Sessions
-                        recentSection
-                            .padding(.bottom, 100)
+            Text(L10n.s(.startSession, lang))
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(.vtText)
+
+            // Session title (optional)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Text(L10n.s(.sessionTitleLabel, lang))
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundColor(.vtDim)
+                        .tracking(2)
+
+                    Text("(\(L10n.s(.optional, lang)))")
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                        .foregroundColor(.vtDim.opacity(0.5))
+                }
+
+                TextField("", text: $sessionTitle)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.vtText)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(Color.vtSurface)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(Color.vtBorder, lineWidth: 1)
+                    )
+            }
+
+            // 1. Game Mode
+            setupPickerSection(
+                label: L10n.s(.gameModeLabel, lang),
+                items: GameMode.allCases,
+                selected: $selectedGameMode,
+                nameFor: { L10n.gameModeName($0, lang) }
+            )
+
+            // 2. Table Size
+            setupPickerSection(
+                label: L10n.s(.tableSizeLabel, lang),
+                items: TableSize.allCases,
+                selected: $selectedTableSize,
+                nameFor: { L10n.tableSizeName($0, lang) }
+            )
+
+            // 3. Table Style
+            setupPickerSection(
+                label: L10n.s(.tableStyleLabel, lang),
+                items: PokerTableStyle.allCases,
+                selected: $selectedPokerTableStyle,
+                nameFor: { L10n.tableStyleName($0, lang) }
+            )
+
+            Spacer()
+
+            // Start button
+            Button {
+                let trimmedTitle = sessionTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                dataService.startSession(
+                    title: trimmedTitle.isEmpty ? nil : trimmedTitle,
+                    gameMode: selectedGameMode,
+                    tableSize: selectedTableSize,
+                    tableStyle: selectedPokerTableStyle
+                )
+                sessionTitle = ""
+                showSessionSetup = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        selectedTab = 1
                     }
                 }
-                .scrollIndicators(.hidden)
+            } label: {
+                Text(L10n.s(.startSession, lang))
+                    .font(.system(size: 16, weight: .semibold))
+                    .tracking(0.5)
+                    .foregroundColor(.vtBlack)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(Color.vtText)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
-            .toolbar(.hidden, for: .navigationBar)
+            .buttonStyle(ScaleButtonStyle())
         }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 20)
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.hidden)
+        .background(Color.vtBlack.ignoresSafeArea())
+        .animation(.easeInOut(duration: 0.2), value: selectedGameMode)
+        .animation(.easeInOut(duration: 0.2), value: selectedTableSize)
     }
 
-    // MARK: - Background
+    /// Reusable picker row for setup sheet
+    private func setupPickerSection<T: Identifiable & Equatable>(
+        label: String,
+        items: [T],
+        selected: Binding<T>,
+        nameFor: @escaping (T) -> String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(label)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundColor(.vtDim)
+                .tracking(2)
 
-    private var backgroundLayer: some View {
-        ZStack {
-            // Base dark
-            Color.black
-
-            // Primary mesh gradient - orange to purple
-            EllipticalGradient(
-                colors: [
-                    Color(hex: "FF6B35").opacity(0.35),
-                    Color(hex: "D63384").opacity(0.2),
-                    Color.clear
-                ],
-                center: .init(x: 0.15, y: 0.08),
-                startRadiusFraction: 0.0,
-                endRadiusFraction: 0.6
-            )
-
-            // Purple core glow - center
-            EllipticalGradient(
-                colors: [
-                    Color(hex: "7C3AED").opacity(0.3),
-                    Color(hex: "6D28D9").opacity(0.15),
-                    Color.clear
-                ],
-                center: .init(x: 0.6, y: 0.35),
-                startRadiusFraction: 0.0,
-                endRadiusFraction: 0.5
-            )
-
-            // Neon green accent - bottom left
-            EllipticalGradient(
-                colors: [
-                    Color(hex: "39FF14").opacity(0.08),
-                    Color(hex: "00FF88").opacity(0.04),
-                    Color.clear
-                ],
-                center: .init(x: 0.1, y: 0.85),
-                startRadiusFraction: 0.0,
-                endRadiusFraction: 0.4
-            )
-
-            // Pink accent - bottom right
-            EllipticalGradient(
-                colors: [
-                    Color(hex: "FF2D95").opacity(0.12),
-                    Color(hex: "FF6BC1").opacity(0.06),
-                    Color.clear
-                ],
-                center: .init(x: 0.85, y: 0.7),
-                startRadiusFraction: 0.0,
-                endRadiusFraction: 0.45
-            )
-
-            // Soft noise overlay for depth
-            LinearGradient(
-                colors: [
-                    Color.clear,
-                    Color.black.opacity(0.3),
-                    Color.clear,
-                    Color.black.opacity(0.2)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
-    }
-
-    // MARK: - Header
-
-    private var header: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 0) {
-                    Text("Range")
-                        .font(.system(size: 26, weight: .bold))
-                        .foregroundColor(.white)
-
-                    Text("Mind")
-                        .font(.system(size: 26, weight: .bold))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [.vtAccent, .vtAccent.opacity(0.7)],
-                                startPoint: .leading,
-                                endPoint: .trailing
+            HStack(spacing: 6) {
+                ForEach(items) { item in
+                    let isSelected = selected.wrappedValue == item
+                    Button {
+                        selected.wrappedValue = item
+                    } label: {
+                        Text(nameFor(item))
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(isSelected ? .vtBlack : .vtMuted)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 9)
+                            .background(isSelected ? Color.vtText : Color.clear)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .stroke(isSelected ? Color.clear : Color.vtBorder, lineWidth: 1)
                             )
-                        )
+                    }
+                    .buttonStyle(.plain)
                 }
+            }
+        }
+    }
+
+    // MARK: - Top Bar
+
+    private var topBar: some View {
+        HStack {
+            // Left: player type or hands count
+            if dataService.lifetimeHands >= 10 {
+                let playerType = PlayerType.from(vpip: dataService.lifetimeVPIP)
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(playerType.color)
+                        .frame(width: 5, height: 5)
+                    Text(playerType.rawValue)
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundColor(.vtDim)
+                }
+            } else {
+                Text("\(dataService.lifetimeHands) / 10")
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundColor(.vtDim)
             }
 
             Spacer()
 
-            if dataService.lifetimeHands >= 100 {
-                glassPlayerBadge
-            }
-        }
-        .padding(.horizontal, 24)
-    }
-
-    private var glassPlayerBadge: some View {
-        let type = PlayerType.from(vpip: dataService.lifetimeVPIP)
-        return HStack(spacing: 6) {
-            Circle()
-                .fill(type.color)
-                .frame(width: 5, height: 5)
-                .shadow(color: type.color.opacity(0.6), radius: 4)
-
-            Text(type.rawValue)
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundColor(.white.opacity(0.6))
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(.ultraThinMaterial)
-        .clipShape(Capsule())
-        .overlay(
-            Capsule()
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
-        )
-    }
-
-    // MARK: - Dial Section
-
-    private var dialSection: some View {
-        LiquidGlassDial(
-            vpipValue: dataService.lifetimeVPIP,
-            targetValue: selectedStrategy.vpipTarget,
-            label: L10n.s(.currentVPIP, lang),
-            isBuilding: dataService.lifetimeHands < 10,
-            handsPlayed: dataService.lifetimeHands,
-            handsRequired: 10
-        )
-    }
-
-    // MARK: - Strategy Buttons
-
-    private var strategyButtons: some View {
-        HStack(spacing: 28) {
-            ForEach(PokerStrategy.allCases, id: \.self) { strategy in
-                StrategyButton(
-                    strategy: strategy,
-                    isSelected: selectedStrategy == strategy,
-                    lang: lang
-                ) {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        selectedStrategy = strategy
+            // Right: live session indicator
+            if dataService.hasActiveSession {
+                Button {
+                    selectedTab = 1
+                } label: {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(Color.vtGreen)
+                            .frame(width: 5, height: 5)
+                        Text("LIVE · \(dataService.sessionHands)")
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundColor(.vtDim)
                     }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .stroke(Color.vtBorder, lineWidth: 1)
+                    )
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
             }
         }
     }
 
-    // MARK: - Quick Stats Bar
+    // MARK: - Hero
 
-    private var quickStatsBar: some View {
+    private var heroSection: some View {
+        VStack(spacing: 8) {
+            if dataService.lifetimeHands >= 10 {
+                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                    Text("\(dataService.lifetimeVPIP)")
+                        .font(.system(size: 96, weight: .ultraLight, design: .monospaced))
+                        .foregroundColor(.vtText)
+                        .contentTransition(.numericText())
+
+                    Text("%")
+                        .font(.system(size: 32, weight: .ultraLight, design: .monospaced))
+                        .foregroundColor(.vtDim)
+                }
+
+                Text(L10n.s(.lifetimeVPIP, lang))
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundColor(.vtDim)
+                    .tracking(2)
+            } else {
+                Text("—")
+                    .font(.system(size: 80, weight: .ultraLight, design: .monospaced))
+                    .foregroundColor(.vtDim)
+
+                Text(L10n.s(.buildingProfile, lang))
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundColor(.vtDim)
+                    .tracking(2)
+
+                Text("\(dataService.lifetimeHands) / 10 \(L10n.s(.handsProgress, lang))")
+                    .font(.system(size: 14, design: .monospaced))
+                    .foregroundColor(.vtDim)
+            }
+        }
+    }
+
+    // MARK: - Quick Stats
+
+    private var quickStats: some View {
         HStack(spacing: 0) {
-            glassStatCell("\(dataService.lifetimeHands)", L10n.s(.hands, lang))
+            statCell("\(dataService.lifetimeHands)", L10n.s(.hands, lang))
 
-            glassStatDivider
-
-            glassStatCell("\(dataService.recentSessions.count)", L10n.s(.sessions, lang))
-
-            glassStatDivider
+            statCell("\(dataService.recentSessions.count)", L10n.s(.sessions, lang))
 
             let totalBB = dataService.totalBBResult
-            glassStatCell(
-                totalBB != 0 ? String(format: "%+.0f", totalBB) : "--",
+            statCell(
+                totalBB != 0 ? String(format: "%+.0f", totalBB) : "—",
                 "BB",
-                color: totalBB > 0 ? .vtAccent : totalBB < 0 ? .vtRed : .white.opacity(0.6)
+                color: totalBB > 0 ? .vtAccent : totalBB < 0 ? .vtRed : .vtText
             )
 
             if dataService.lifetimeHands >= 100 {
-                glassStatDivider
                 let bb100 = dataService.bb100
-                glassStatCell(
+                statCell(
                     String(format: "%.1f", bb100),
                     "BB/100",
-                    color: bb100 > 0 ? .vtAccent : bb100 < 0 ? .vtRed : .white.opacity(0.6)
+                    color: bb100 > 0 ? .vtAccent : bb100 < 0 ? .vtRed : .vtText
                 )
             }
         }
-        .padding(.vertical, 16)
-        .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(.ultraThinMaterial)
-
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.06),
-                                Color.white.opacity(0.02)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-            }
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
-        )
     }
 
-    private func glassStatCell(_ value: String, _ label: String, color: Color = .white.opacity(0.85)) -> some View {
+    private func statCell(_ value: String, _ label: String, color: Color = .vtText) -> some View {
         VStack(spacing: 4) {
             Text(value)
-                .font(.system(size: 18, weight: .medium, design: .monospaced))
+                .font(.system(size: 22, weight: .medium, design: .monospaced))
                 .monospacedDigit()
                 .foregroundColor(color)
 
             Text(label)
-                .font(.system(size: 9, weight: .medium, design: .monospaced))
-                .foregroundColor(.white.opacity(0.3))
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundColor(.vtDim)
                 .tracking(1)
         }
         .frame(maxWidth: .infinity)
-    }
-
-    private var glassStatDivider: some View {
-        Rectangle()
-            .fill(Color.white.opacity(0.08))
-            .frame(width: 1, height: 28)
-    }
-
-    // MARK: - Start Button
-
-    private var startButton: some View {
-        Button {
-            if !dataService.hasActiveSession {
-                dataService.startSession()
-            }
-            selectedTab = 1
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: dataService.hasActiveSession ? "play.fill" : "plus")
-                    .font(.system(size: 14, weight: .semibold))
-
-                Text(L10n.s(dataService.hasActiveSession ? .continueSession : .startSession, lang))
-                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                    .tracking(1.5)
-            }
-            .foregroundColor(.white)
-            .frame(maxWidth: .infinity)
-            .frame(height: 52)
-            .background(
-                ZStack {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color.vtAccent,
-                                    Color.vtAccent.opacity(0.8)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-
-                    // Glass shine
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.2),
-                                    Color.clear
-                                ],
-                                startPoint: .top,
-                                endPoint: .center
-                            )
-                        )
-                }
-            )
-            .shadow(color: .vtAccent.opacity(0.4), radius: 16, x: 0, y: 6)
-        }
-        .buttonStyle(GlassButtonStyle())
     }
 
     // MARK: - Recent Sessions
@@ -351,35 +341,34 @@ struct HomeView: View {
             if !dataService.recentSessions.isEmpty {
                 HStack {
                     Text(L10n.s(.recent, lang))
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.3))
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundColor(.vtDim)
                         .tracking(2)
 
                     Spacer()
 
-                    if dataService.recentSessions.count > 5 {
-                        NavigationLink {
-                            AllSessionsView()
-                        } label: {
-                            Text(L10n.s(.viewAll, lang))
-                                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                                .foregroundColor(.vtAccent.opacity(0.7))
-                                .tracking(1)
-                        }
+                    NavigationLink {
+                        AllSessionsView()
+                    } label: {
+                        Text(L10n.s(.viewAll, lang))
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundColor(.vtDim)
+                            .tracking(1)
                     }
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 32)
 
-                VStack(spacing: 0) {
-                    let sessions = Array(dataService.recentSessions.prefix(6))
-                    ForEach(Array(sessions.enumerated()), id: \.element.id) { index, session in
+                List {
+                    ForEach(dataService.recentSessions) { session in
                         NavigationLink {
                             SessionDetailView(session: session)
                         } label: {
                             sessionRow(session)
                         }
-                        .buttonStyle(.plain)
-                        .contextMenu {
+                        .listRowInsets(EdgeInsets(top: 0, leading: 32, bottom: 0, trailing: 32))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparatorTint(.vtBorder)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
                                 withAnimation {
                                     dataService.deleteSession(session)
@@ -388,38 +377,12 @@ struct HomeView: View {
                                 Label(L10n.s(.delete, lang), systemImage: "trash")
                             }
                         }
-
-                        if index < sessions.count - 1 {
-                            Rectangle()
-                                .fill(Color.white.opacity(0.06))
-                                .frame(height: 0.5)
-                                .padding(.horizontal, 16)
-                        }
                     }
                 }
-                .background(
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(.ultraThinMaterial)
-
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color.white.opacity(0.05),
-                                        Color.white.opacity(0.02)
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
-                    }
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                )
-                .padding(.horizontal, 24)
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .scrollDisabled(true)
+                .frame(minHeight: CGFloat(dataService.recentSessions.count) * 70)
             }
         }
     }
@@ -427,13 +390,27 @@ struct HomeView: View {
     private func sessionRow(_ session: SessionData) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 3) {
-                Text(session.dateLabel(lang))
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.white.opacity(0.85))
+                HStack(spacing: 6) {
+                    Text(session.dateLabel(lang))
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(.vtText)
+
+                    if let title = session.title, !title.isEmpty {
+                        Text("· \(title)")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.vtMuted)
+                            .lineLimit(1)
+                    }
+                }
 
                 Text("\(session.totalHands) \(L10n.s(.handsCount, lang)) · \(session.durationFormatted(lang))")
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.35))
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundColor(.vtDim)
+
+                // Table info
+                Text(session.tableInfoLabel(lang))
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(.vtDim)
             }
 
             Spacer()
@@ -441,18 +418,17 @@ struct HomeView: View {
             HStack(spacing: 12) {
                 if let bb = session.totalBBResult, bb != 0 {
                     Text(String(format: "%+.0f", bb))
-                        .font(.system(size: 14, weight: .medium, design: .monospaced))
+                        .font(.system(size: 15, weight: .medium, design: .monospaced))
                         .monospacedDigit()
                         .foregroundColor(bb > 0 ? .vtAccent : .vtRed)
                 }
 
                 Text("\(session.sessionVPIP)%")
-                    .font(.system(size: 14, weight: .medium, design: .monospaced))
+                    .font(.system(size: 15, weight: .medium, design: .monospaced))
                     .monospacedDigit()
-                    .foregroundColor(.white.opacity(0.4))
+                    .foregroundColor(.vtMuted)
             }
         }
-        .padding(.horizontal, 16)
         .padding(.vertical, 14)
         .contentShape(Rectangle())
     }

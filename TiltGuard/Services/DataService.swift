@@ -1,16 +1,10 @@
 import Foundation
 import SwiftData
+import AuthenticationServices
 
 enum TiltPhase: Equatable {
     case normal
-    case observing
     case cooldown
-}
-
-enum CooldownTrigger: Equatable {
-    case lossBased   // loss-chase, revenge tilt
-    case winBased    // win-tilt, overconfidence
-    case driftBased  // general VPIP drift, style drift
 }
 
 @MainActor
@@ -32,6 +26,9 @@ final class DataService {
 
     var language: AppLanguage = .english
 
+    // Pro status (placeholder — will be driven by StoreKit)
+    var isProUnlocked: Bool { UserDefaults.standard.bool(forKey: "vt_pro_unlocked") }
+
     // Feature toggles (read from UserDefaults via @AppStorage in views)
     var tiltAlertsEnabled: Bool {
         if UserDefaults.standard.object(forKey: "vt_tilt_enabled") == nil { return true }
@@ -41,82 +38,417 @@ final class DataService {
         if UserDefaults.standard.object(forKey: "vt_cooldown_enabled") == nil { return true }
         return UserDefaults.standard.bool(forKey: "vt_cooldown_enabled")
     }
+    // Session game configuration (3-dimension)
+    private(set) var sessionGameMode: GameMode = .cash
+    private(set) var sessionTableSize: TableSize = .sixMax
+    private(set) var sessionTableStyle: PokerTableStyle = .standard
 
-    // Cooldown system
+    /// Table size modifier
+    var tableSizeModifier: Double {
+        switch sessionTableSize {
+        case .headsUp: return 8.0
+        case .sixMax: return 3.0
+        case .nineMax: return -2.0
+        case .fullRing: return -5.0
+        }
+    }
+
+    /// Table style modifier
+    var tableStyleModifier: Double {
+        switch sessionTableStyle {
+        case .standard: return 0.0
+        case .loose: return 5.0
+        case .friendly: return 8.0
+        }
+    }
+
+    /// Game mode modifier
+    var gameModeModifier: Double {
+        switch sessionGameMode {
+        case .cash: return 0.0
+        case .tournament: return -3.0
+        }
+    }
+
+    /// Combined table modifier = size + style + mode
+    var tableModifier: Double {
+        tableSizeModifier + tableStyleModifier + gameModeModifier
+    }
+
+    /// Baseline range = player VPIP + table modifier
+    var baselinePercent: Double {
+        Double(lifetimeVPIP) + tableModifier
+    }
+
+    /// Tolerance range = baseline + 10%
+    var tolerancePercent: Double {
+        baselinePercent + 10.0
+    }
+
+    /// Warning threshold varies by game mode
+    var warningThreshold: Int {
+        switch sessionGameMode {
+        case .cash: return 6
+        case .tournament: return 5
+        }
+    }
+
+    /// Danger threshold varies by game mode + style
+    var dangerThreshold: Int {
+        switch sessionGameMode {
+        case .cash: return sessionTableStyle == .friendly ? 10 : 9
+        case .tournament: return 8
+        }
+    }
+
+    /// Consecutive VPIP trigger varies by table size
+    var consecutiveVPIPTrigger: Int {
+        switch sessionTableSize {
+        case .headsUp: return 5
+        case .sixMax: return 4
+        case .nineMax: return 3
+        case .fullRing: return 3
+        }
+    }
+
+    /// Cooldown length varies by game mode
+    var cooldownLength: Int {
+        switch sessionGameMode {
+        case .cash: return 5
+        case .tournament: return 4
+        }
+    }
+
+    // Cooldown system (2-state: normal → cooldown)
     private(set) var tiltPhase: TiltPhase = .normal
     private(set) var phaseStartHandCount: Int = 0
     private(set) var cooldownRemaining: Int = 0
     private(set) var cooldownTotal: Int = 0
-    private(set) var cooldownTrigger: CooldownTrigger = .driftBased
-    private var observationWindowSize: Int = 5
-    private var initialCooldownHands: Int = 10
-    private var maxCooldownHands: Int = 20
+    private var cooldownExtension: Int = 5
+    private var cooldownAlreadyExtended: Bool = false
+    private var cooldownGracePeriod: Int = 5
+    private var lastCooldownEndHandCount: Int = 0
 
     // MARK: - User / Account
 
-    var isLoggedIn: Bool { true } // TODO: Sign in with Apple — temporarily true to unlock all features
+    private enum AuthKeys {
+        static let appleUserID = "vt_apple_user_id"
+        static let userName = "vt_user_name"
+        static let userEmail = "vt_user_email"
+        static let userAvatar = "vt_user_avatar"  // SF Symbol name or emoji
+        static let userAvatarImage = "vt_user_avatar_image"  // Custom photo data
+        static let guestInstallID = "vt_guest_install_id"
+    }
 
+    private(set) var isLoggedIn: Bool = false
     var isGuestMode: Bool { !isLoggedIn }
 
-    var userName: String { isLoggedIn ? "Player" : "Guest" }
+    /// Stable per-install guest ID, generated once
+    var guestInstallID: String {
+        if let existing = UserDefaults.standard.string(forKey: AuthKeys.guestInstallID) {
+            return existing
+        }
+        let newID = UUID().uuidString
+        UserDefaults.standard.set(newID, forKey: AuthKeys.guestInstallID)
+        return newID
+    }
 
-    var userEmail: String { "" }
+    /// Current user scope: "apple:<id>" or "guest:<installID>"
+    var currentUserID: String {
+        if let appleID = UserDefaults.standard.string(forKey: AuthKeys.appleUserID), !appleID.isEmpty {
+            return "apple:\(appleID)"
+        }
+        return "guest:\(guestInstallID)"
+    }
+
+    private(set) var userName: String = "Guest"
+    private(set) var userEmail: String = ""
+    private(set) var userAvatar: String = ""  // SF Symbol name, emoji, or empty
+    private(set) var userAvatarImageData: Data?  // Custom uploaded photo
 
     var userInitial: String {
         String(userName.prefix(1)).uppercased()
     }
 
+    /// Update display name (user customization)
+    func updateUserName(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        userName = trimmed
+        UserDefaults.standard.set(trimmed, forKey: AuthKeys.userName)
+    }
+
+    /// Update avatar (SF Symbol name or emoji)
+    func updateUserAvatar(_ avatar: String) {
+        userAvatar = avatar
+        UserDefaults.standard.set(avatar, forKey: AuthKeys.userAvatar)
+    }
+
+    /// Update avatar with custom photo data
+    func updateUserAvatarImage(_ data: Data?) {
+        userAvatarImageData = data
+        if let data {
+            UserDefaults.standard.set(data, forKey: AuthKeys.userAvatarImage)
+        } else {
+            UserDefaults.standard.removeObject(forKey: AuthKeys.userAvatarImage)
+        }
+    }
+
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
+        restoreAuthState()
         loadData()
     }
 
-    // MARK: - 数据加载
+    // MARK: - Auth State Persistence
 
-    private func loadData() {
-        if isGuestMode {
-            // Guest mode: clean up any stale data from previous sessions
-            cleanGuestData()
+    /// Restore auth state from UserDefaults (synchronous, before loadData)
+    private func restoreAuthState() {
+        if let userID = UserDefaults.standard.string(forKey: AuthKeys.appleUserID),
+           !userID.isEmpty {
+            isLoggedIn = true
+            userName = UserDefaults.standard.string(forKey: AuthKeys.userName) ?? "Player"
+            userEmail = UserDefaults.standard.string(forKey: AuthKeys.userEmail) ?? ""
+            userAvatar = UserDefaults.standard.string(forKey: AuthKeys.userAvatar) ?? ""
+            userAvatarImageData = UserDefaults.standard.data(forKey: AuthKeys.userAvatarImage)
+        } else {
+            isLoggedIn = false
+            userName = "Guest"
+            userEmail = ""
+            userAvatar = ""
+            userAvatarImageData = nil
         }
+    }
+
+    // MARK: - Sign in with Apple
+
+    private var signInDelegate: SignInDelegate?
+
+    /// Perform Sign in with Apple
+    func signInWithApple() {
+        let request = ASAuthorizationAppleIDProvider().createRequest()
+        request.requestedScopes = [.fullName, .email]
+
+        let controller = ASAuthorizationController(authorizationRequests: [request])
+        let delegate = SignInDelegate { [weak self] result in
+            Task { @MainActor in
+                self?.handleSignInResult(result)
+            }
+        }
+        self.signInDelegate = delegate
+        controller.delegate = delegate
+        controller.performRequests()
+    }
+
+    /// Handle a completed ASAuthorization (used by SignInWithAppleButton in SwiftUI)
+    func handleSignInAuthorization(_ authorization: ASAuthorization) {
+        guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else { return }
+        applyAppleCredential(credential)
+    }
+
+    private func handleSignInResult(_ result: Result<ASAuthorization, Error>) {
+        signInDelegate = nil
+
+        switch result {
+        case .success(let authorization):
+            handleSignInAuthorization(authorization)
+        case .failure(let error):
+            print("Sign in with Apple failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func applyAppleCredential(_ credential: ASAuthorizationAppleIDCredential) {
+        // Capture guest ID before switching to apple context
+        let previousGuestUID = "guest:\(guestInstallID)"
+
+        let userID = credential.user
+
+        // Apple only provides name/email on FIRST sign in
+        let fullName: String? = {
+            guard let name = credential.fullName else { return nil }
+            let components = [name.givenName, name.familyName].compactMap { $0 }
+            return components.isEmpty ? nil : components.joined(separator: " ")
+        }()
+        let email = credential.email
+
+        // Persist to UserDefaults
+        UserDefaults.standard.set(userID, forKey: AuthKeys.appleUserID)
+        if let fullName, !fullName.isEmpty {
+            UserDefaults.standard.set(fullName, forKey: AuthKeys.userName)
+        }
+        if let email, !email.isEmpty {
+            UserDefaults.standard.set(email, forKey: AuthKeys.userEmail)
+        }
+
+        // Update in-memory state
+        isLoggedIn = true
+        userName = UserDefaults.standard.string(forKey: AuthKeys.userName) ?? "Player"
+        userEmail = UserDefaults.standard.string(forKey: AuthKeys.userEmail) ?? ""
+        userAvatar = UserDefaults.standard.string(forKey: AuthKeys.userAvatar) ?? ""
+        userAvatarImageData = UserDefaults.standard.data(forKey: AuthKeys.userAvatarImage)
+
+        // Migrate guest data to this apple account
+        migrateGuestData(from: previousGuestUID)
+
+        // Reload data in new user context
+        activeSession = nil
+        currentHandRecords = []
         loadOrCreatePlayer()
         loadActiveSession()
         loadRecentSessions()
     }
 
-    /// Guest mode: delete all completed sessions on app launch
-    private func cleanGuestData() {
-        let descriptor = FetchDescriptor<SessionData>(
-            predicate: #Predicate { $0.endTime != nil }
+    /// Migrate guest sessions and stats to the logged-in user
+    private func migrateGuestData(from guestUID: String) {
+        let appleUID = currentUserID
+
+        // Migrate guest sessions
+        let sessionDescriptor = FetchDescriptor<SessionData>(
+            predicate: #Predicate { $0.ownerUserID == guestUID }
         )
         do {
-            let staleSessions = try modelContext.fetch(descriptor)
-            for session in staleSessions {
-                modelContext.delete(session)
+            let guestSessions = try modelContext.fetch(sessionDescriptor)
+            for session in guestSessions {
+                session.ownerUserID = appleUID
+                session.isGuestSession = false
             }
-            // Reset player stats
-            let playerDescriptor = FetchDescriptor<PlayerData>()
-            let players = try modelContext.fetch(playerDescriptor)
-            for p in players {
-                p.lifetimeHands = 0
-                p.lifetimeVPIPHands = 0
+
+            // Merge guest player stats into apple player
+            let guestPlayerDescriptor = FetchDescriptor<PlayerData>(
+                predicate: #Predicate { $0.ownerUserID == guestUID }
+            )
+            let guestPlayers = try modelContext.fetch(guestPlayerDescriptor)
+            if let guestPlayer = guestPlayers.first, guestPlayer.lifetimeHands > 0 {
+                // Find or create apple player
+                let applePlayerDescriptor = FetchDescriptor<PlayerData>(
+                    predicate: #Predicate { $0.ownerUserID == appleUID }
+                )
+                let applePlayers = try modelContext.fetch(applePlayerDescriptor)
+                if let applePlayer = applePlayers.first {
+                    applePlayer.lifetimeHands += guestPlayer.lifetimeHands
+                    applePlayer.lifetimeVPIPHands += guestPlayer.lifetimeVPIPHands
+                } else {
+                    guestPlayer.ownerUserID = appleUID
+                }
+                // Delete guest player if it was merged (not reassigned)
+                if guestPlayer.ownerUserID == guestUID {
+                    modelContext.delete(guestPlayer)
+                }
             }
+
             try modelContext.save()
         } catch {
-            print("Failed to clean guest data: \(error)")
+            print("Failed to migrate guest data: \(error)")
+        }
+    }
+
+    /// Sign out: clear auth state and revert to guest mode
+    /// SwiftData is preserved — signing back in restores everything
+    func signOut() {
+        // Only clear login flag — preserve name, avatar, email in UserDefaults
+        // so re-login restores them (Apple only sends name on first auth)
+        UserDefaults.standard.removeObject(forKey: AuthKeys.appleUserID)
+
+        isLoggedIn = false
+        userName = "Guest"
+        userEmail = ""
+        userAvatar = ""
+        userAvatarImageData = nil
+
+        // Switch to guest context — reload guest's own data
+        activeSession = nil
+        currentHandRecords = []
+        loadOrCreatePlayer()
+        loadActiveSession()
+        loadRecentSessions()
+    }
+
+    /// Check if Apple credential is still valid. Call on app launch.
+    func checkAppleCredentialState() {
+        guard let userID = UserDefaults.standard.string(forKey: AuthKeys.appleUserID),
+              !userID.isEmpty else {
+            return
+        }
+
+        let provider = ASAuthorizationAppleIDProvider()
+        provider.getCredentialState(forUserID: userID) { [weak self] state, _ in
+            Task { @MainActor in
+                switch state {
+                case .revoked, .notFound:
+                    self?.signOut()
+                case .authorized:
+                    break
+                case .transferred:
+                    break
+                @unknown default:
+                    break
+                }
+            }
+        }
+    }
+
+    // MARK: - 数据加载
+
+    private func loadData() {
+        migrateOwnerlessData()
+        loadOrCreatePlayer()
+        loadActiveSession()
+        loadRecentSessions()
+    }
+
+    /// One-time migration: assign ownerUserID to legacy data that has none
+    private func migrateOwnerlessData() {
+        let uid = currentUserID
+        // Migrate sessions without ownerUserID
+        let sessionDesc = FetchDescriptor<SessionData>(
+            predicate: #Predicate { $0.ownerUserID == "" }
+        )
+        // Migrate players without ownerUserID
+        let playerDesc = FetchDescriptor<PlayerData>(
+            predicate: #Predicate { $0.ownerUserID == "" }
+        )
+        do {
+            let sessions = try modelContext.fetch(sessionDesc)
+            for s in sessions {
+                s.ownerUserID = uid
+            }
+            let players = try modelContext.fetch(playerDesc)
+            for p in players {
+                p.ownerUserID = uid
+            }
+            if !sessions.isEmpty || !players.isEmpty {
+                try modelContext.save()
+            }
+        } catch {
+            print("Failed to migrate ownerless data: \(error)")
         }
     }
 
     private func loadOrCreatePlayer() {
-        let descriptor = FetchDescriptor<PlayerData>()
+        let uid = currentUserID
+        let descriptor = FetchDescriptor<PlayerData>(
+            predicate: #Predicate { $0.ownerUserID == uid }
+        )
         do {
             let players = try modelContext.fetch(descriptor)
             if let existingPlayer = players.first {
                 player = existingPlayer
             } else {
-                let newPlayer = PlayerData()
-                modelContext.insert(newPlayer)
-                try modelContext.save()
-                player = newPlayer
+                // Migrate legacy player (ownerUserID == "") if exists
+                let legacyDescriptor = FetchDescriptor<PlayerData>(
+                    predicate: #Predicate { $0.ownerUserID == "" }
+                )
+                let legacyPlayers = try modelContext.fetch(legacyDescriptor)
+                if let legacy = legacyPlayers.first {
+                    legacy.ownerUserID = uid
+                    try modelContext.save()
+                    player = legacy
+                } else {
+                    let newPlayer = PlayerData(ownerUserID: uid)
+                    modelContext.insert(newPlayer)
+                    try modelContext.save()
+                    player = newPlayer
+                }
             }
         } catch {
             print("Failed to load player: \(error)")
@@ -124,8 +456,9 @@ final class DataService {
     }
 
     private func loadActiveSession() {
+        let uid = currentUserID
         var descriptor = FetchDescriptor<SessionData>(
-            predicate: #Predicate { $0.endTime == nil }
+            predicate: #Predicate { $0.endTime == nil && $0.ownerUserID == uid }
         )
         descriptor.fetchLimit = 1
 
@@ -134,6 +467,10 @@ final class DataService {
             activeSession = sessions.first
 
             if let session = activeSession {
+                // Restore game configuration from session
+                sessionGameMode = session.gameMode
+                sessionTableSize = session.tableSize
+                sessionTableStyle = session.tableStyle
                 loadHandRecords(for: session)
             }
         } catch {
@@ -142,13 +479,9 @@ final class DataService {
     }
 
     private func loadRecentSessions() {
-        if isGuestMode {
-            recentSessions = []
-            return
-        }
-
+        let uid = currentUserID
         var descriptor = FetchDescriptor<SessionData>(
-            predicate: #Predicate { $0.endTime != nil },
+            predicate: #Predicate { $0.endTime != nil && $0.ownerUserID == uid },
             sortBy: [SortDescriptor(\.startTime, order: .reverse)]
         )
         descriptor.fetchLimit = 10
@@ -176,10 +509,20 @@ final class DataService {
 
     // MARK: - Session 操作
 
-    func startSession() {
+    func startSession(title: String? = nil, gameMode: GameMode = .cash, tableSize: TableSize = .sixMax, tableStyle: PokerTableStyle = .standard) {
         guard activeSession == nil else { return }
+        sessionGameMode = gameMode
+        sessionTableSize = tableSize
+        sessionTableStyle = tableStyle
 
-        let newSession = SessionData()
+        let newSession = SessionData(
+            ownerUserID: currentUserID,
+            isGuestSession: isGuestMode,
+            title: title,
+            gameMode: gameMode,
+            tableSize: tableSize,
+            tableStyle: tableStyle
+        )
         modelContext.insert(newSession)
 
         do {
@@ -204,12 +547,7 @@ final class DataService {
             currentHandRecords = []
             resetTiltPhase()
 
-            if isGuestMode {
-                // Guest mode: don't persist history, don't accumulate lifetime stats
-                // Session data remains in memory for summary view but won't survive app restart
-            } else {
-                loadRecentSessions()
-            }
+            loadRecentSessions()
 
             return endedSession
         } catch {
@@ -219,8 +557,8 @@ final class DataService {
     }
 
     func deleteSession(_ session: SessionData) {
-        // Reverse lifetime stats for logged-in users
-        if !isGuestMode, let p = player {
+        // Reverse lifetime stats
+        if let p = player {
             p.lifetimeHands = max(0, p.lifetimeHands - session.totalHands)
             p.lifetimeVPIPHands = max(0, p.lifetimeVPIPHands - session.vpipHands)
         }
@@ -292,9 +630,7 @@ final class DataService {
         let record = HandRecordData(didVPIP: false, card1Rank: card1, card2Rank: card2, isSuited: isSuited, isGTODeviation: deviation, session: session)
         modelContext.insert(record)
 
-        if !isGuestMode {
-            player?.addHand(didVPIP: false)
-        }
+        player?.addHand(didVPIP: false)
 
         do {
             try modelContext.save()
@@ -310,6 +646,7 @@ final class DataService {
         card2: String,
         isSuited: Bool?,
         result: HandResult,
+        emotionSignal: EmotionSignal? = nil,
         bbResult: Double? = nil,
         position: PokerPosition? = nil,
         actionType: ActionType? = nil
@@ -343,6 +680,7 @@ final class DataService {
             isSuited: isSuited,
             result: result,
             isGTODeviation: deviation,
+            emotionSignal: emotionSignal,
             bbResult: bbResult,
             position: position,
             actionType: actionType,
@@ -350,9 +688,7 @@ final class DataService {
         )
         modelContext.insert(record)
 
-        if !isGuestMode {
-            player?.addHand(didVPIP: true)
-        }
+        player?.addHand(didVPIP: true)
 
         do {
             try modelContext.save()
@@ -377,12 +713,10 @@ final class DataService {
         }
 
         // Update player lifetime stats
-        if !isGuestMode {
-            if let p = player {
-                p.lifetimeHands = max(0, p.lifetimeHands - 1)
-                if record.didVPIP {
-                    p.lifetimeVPIPHands = max(0, p.lifetimeVPIPHands - 1)
-                }
+        if let p = player {
+            p.lifetimeHands = max(0, p.lifetimeHands - 1)
+            if record.didVPIP {
+                p.lifetimeVPIPHands = max(0, p.lifetimeVPIPHands - 1)
             }
         }
 
@@ -402,16 +736,11 @@ final class DataService {
     // MARK: - 统计计算
 
     var lifetimeVPIP: Int {
-        if isGuestMode {
-            // Guest: use session VPIP as baseline for tilt detection
-            return sessionVPIP
-        }
-        return player?.lifetimeVPIP ?? 0
+        player?.lifetimeVPIP ?? sessionVPIP
     }
 
     var lifetimeHands: Int {
-        if isGuestMode { return 0 }
-        return player?.lifetimeHands ?? 0
+        player?.lifetimeHands ?? 0
     }
 
     var sessionVPIP: Int {
@@ -441,14 +770,7 @@ final class DataService {
         activeSession != nil
     }
 
-    // MARK: - Tilt Detection (Event → Behavioral Deviation)
-
-    // Hands outside the player's usual range
-    private let theoreticalWeakHands: Set<String> = [
-        "KTo", "QTo", "JTo", "K9o", "Q9o", "J9o",
-        "K9s", "Q9s", "J8s", "K7s", "Q8s", "J7s",
-        "A9o", "K8o", "Q7o", "T9o", "98o", "87o"
-    ]
+    // MARK: - Hand History Helpers
 
     func isHandProfitable(_ handType: String) -> Bool {
         let history = getHandHistory(handType: handType)
@@ -457,351 +779,265 @@ final class DataService {
         return totalBB > 0
     }
 
-    func isActuallyWeakHand(_ handType: String) -> Bool {
-        if isHandProfitable(handType) { return false }
-        return theoreticalWeakHands.contains(handType)
+    // MARK: - Risk Score Tilt Detection (V5)
+
+    private let premiumHands: Set<String> = [
+        "AA", "KK", "QQ", "JJ", "TT", "99",
+        "AKs", "AQs", "AJs", "ATs", "KQs", "KJs",
+        "AKo", "AQo"
+    ]
+
+    /// Classify a hand using the percentile-based baseline/tolerance system
+    private func classifyHand(_ handType: String) -> HandPercentile.Classification {
+        return HandPercentile.classify(handType, baseline: baselinePercent, tolerance: tolerancePercent)
     }
 
-    // --- Raw signals (used by multiple detectors) ---
+    /// Calculate risk score from last 8 hands using percentile-based classification
+    ///
+    /// Scoring per hand:
+    /// - VPIP: +1
+    /// - Edge range hand: +1 (additional)
+    /// - Deviation hand: +2 (additional)
+    /// - Consecutive VPIP ≥3: +2 (bonus, once)
+    /// - Loss ≥30BB: +2
+    /// - Loss ≥80BB: +3
+    /// - Emotion signals (5-hand decay): Bad Beat +2, Cooler +2, Tilt +4
+    /// - VPIP-only cap: if no deviation/loss/emotion, total capped at 4
+    func calculateRiskScore() -> (total: Int, lossPoints: Int, behaviorPoints: Int) {
+        let recent = Array(currentHandRecords.suffix(8))
+        guard recent.count >= 5 else { return (0, 0, 0) }
 
-    var hasConsecutiveLosses: Bool {
-        let recentVPIPHands = currentHandRecords.filter { $0.didVPIP }.suffix(4)
-        guard recentVPIPHands.count >= 4 else { return false }
-        return recentVPIPHands.allSatisfy { $0.result == .notWin }
-    }
+        var total = 0
+        var lossPoints = 0
+        var behaviorPoints = 0
+        var consecutiveVPIP = 0
+        var maxConsecutiveVPIP = 0
+        var hasDeviation = false
+        var hasLoss = false
+        var hasEmotion = false
 
-    var hasWeakRangeExpansion: Bool {
-        let recentVPIPHands = currentHandRecords.filter { $0.didVPIP }.suffix(5)
-        guard recentVPIPHands.count >= 3 else { return false }
-        let weakHandCount = recentVPIPHands.filter { hand in
-            // Use recorded GTO deviation if available, otherwise fall back to weak hand check
-            if let deviation = hand.isGTODeviation { return deviation }
-            guard let handType = hand.handType else { return false }
-            return isActuallyWeakHand(handType)
-        }.count
-        return weakHandCount >= 3
-    }
+        for hand in recent {
+            if hand.didVPIP {
+                consecutiveVPIP += 1
+                maxConsecutiveVPIP = max(maxConsecutiveVPIP, consecutiveVPIP)
 
-    /// Recent GTO deviation rate (last N hands with card data)
-    var recentGTODeviationCount: Int {
-        let recentWithCards = currentHandRecords.suffix(10).filter { $0.isGTODeviation != nil }
-        return recentWithCards.filter { $0.isGTODeviation == true }.count
-    }
+                // Base VPIP: +1
+                total += 1
+                behaviorPoints += 1
 
-    var hasProgressiveLoosening: Bool {
-        guard currentHandRecords.count >= 20 else { return false }
-        let midPoint = currentHandRecords.count / 2
-        let firstHalf = Array(currentHandRecords.prefix(midPoint))
-        let secondHalf = Array(currentHandRecords.suffix(midPoint))
+                // Hand classification: edge +1, deviation +2
+                if let ht = hand.handType {
+                    let classification = classifyHand(ht)
+                    switch classification {
+                    case .baseline:
+                        break
+                    case .edge:
+                        total += 1
+                        behaviorPoints += 1
+                        hasDeviation = true
+                    case .deviation:
+                        total += 2
+                        behaviorPoints += 2
+                        hasDeviation = true
+                    }
+                }
 
-        let firstVPIPCount = firstHalf.filter { $0.didVPIP }.count
-        let firstVPIP = firstHalf.isEmpty ? 0 : Int(Double(firstVPIPCount) / Double(firstHalf.count) * 100)
-
-        let secondVPIPCount = secondHalf.filter { $0.didVPIP }.count
-        let secondVPIP = secondHalf.isEmpty ? 0 : Int(Double(secondVPIPCount) / Double(secondHalf.count) * 100)
-
-        return secondVPIP - firstVPIP >= 10
-    }
-
-    var hasBigLossRevengeTilt: Bool {
-        guard currentHandRecords.count >= 10 else { return false }
-        let vpipHands = currentHandRecords.filter { $0.didVPIP }
-        guard let bigLossIndex = vpipHands.lastIndex(where: { ($0.bbResult ?? 0) <= -15 }) else {
-            return false
-        }
-        let bigLossHand = vpipHands[bigLossIndex]
-        let handsAfterLoss = currentHandRecords.filter { $0.timestamp > bigLossHand.timestamp }
-        guard handsAfterLoss.count >= 5 else { return false }
-        let vpipAfterLoss = handsAfterLoss.filter { $0.didVPIP }.count
-        let vpipRateAfter = Double(vpipAfterLoss) / Double(handsAfterLoss.count) * 100
-        return vpipRateAfter >= 40
-    }
-
-    var consecutiveBigLosses: Int {
-        let vpipHands = currentHandRecords.filter { $0.didVPIP }.suffix(6)
-        var count = 0
-        for hand in vpipHands.reversed() {
-            if let bb = hand.bbResult, bb <= -10 {
-                count += 1
-            } else if hand.result == .win {
-                break
+                // Single hand loss ≥80BB: +3, ≥30BB: +2
+                if let bb = hand.bbResult {
+                    if bb <= -80 {
+                        total += 3
+                        lossPoints += 3
+                        hasLoss = true
+                    } else if bb <= -30 {
+                        total += 2
+                        lossPoints += 2
+                        hasLoss = true
+                    }
+                }
+            } else {
+                consecutiveVPIP = 0
             }
         }
-        return count
-    }
 
-    var sessionBBLoss: Double {
-        return activeSession?.totalBBResult ?? 0
-    }
-
-    // MARK: - 4 Core Deviation Detectors
-
-    /// 1. VPIP Drift — basic: 30min VPIP significantly above lifetime
-    var vpipDriftAlert: TiltCoachMessage? {
-        guard thirtyMinHandCount >= 8 else { return nil }
-        let diff = thirtyMinVPIP - lifetimeVPIP
-        if diff >= 15 {
-            return TiltCoachMessage(
-                type: .danger,
-                headline: L10n.s(.tiltVpipDriftDangerH, language),
-                detail: String(format: L10n.s(.tiltVpipDriftDangerD, language), diff)
-            )
-        }
-        if diff >= 10 {
-            return TiltCoachMessage(
-                type: .warning,
-                headline: L10n.s(.tiltVpipDriftWarnH, language),
-                detail: L10n.s(.tiltVpipDriftWarnD, language)
-            )
-        }
-        return nil
-    }
-
-    /// 2. Win-Tilt (顺风膨胀) — after winning streak, range expands
-    var winTiltAlert: TiltCoachMessage? {
-        guard currentHandRecords.count >= 15 else { return nil }
-
-        let vpipHands = currentHandRecords.filter { $0.didVPIP }
-        guard vpipHands.count >= 5 else { return nil }
-
-        // Check: recent results skew positive
-        let recent10 = Array(vpipHands.suffix(10))
-        let winCount = recent10.filter { $0.result == .win }.count
-        let winRate = Double(winCount) / Double(recent10.count)
-
-        guard winRate >= 0.6 else { return nil } // Winning more than 60%
-
-        // Check: VPIP expanding after the wins
-        let recentVPIPRate: Int = {
-            let recent = Array(currentHandRecords.suffix(8))
-            guard !recent.isEmpty else { return 0 }
-            return Int(Double(recent.filter { $0.didVPIP }.count) / Double(recent.count) * 100)
-        }()
-
-        let expansion = recentVPIPRate - lifetimeVPIP
-        guard expansion >= 8 else { return nil }
-
-        // Check: weak hands creeping in
-        let recentWeakCount = vpipHands.suffix(5).filter { hand in
-            guard let ht = hand.handType else { return false }
-            return isActuallyWeakHand(ht)
-        }.count
-
-        if recentWeakCount >= 2 {
-            return TiltCoachMessage(
-                type: .warning,
-                headline: L10n.s(.tiltWinStreakH, language),
-                detail: L10n.s(.tiltWinStreakD, language)
-            )
+        // Consecutive VPIP bonus: trigger varies by table size
+        if maxConsecutiveVPIP >= consecutiveVPIPTrigger {
+            total += 2
+            behaviorPoints += 2
         }
 
-        if expansion >= 12 {
-            return TiltCoachMessage(
-                type: .warning,
-                headline: L10n.s(.tiltWinMomentumH, language),
-                detail: String(format: L10n.s(.tiltWinMomentumD, language), expansion)
-            )
+        // Emotion signals (5-hand decay window)
+        let emotionWindow = Array(currentHandRecords.suffix(5))
+        for hand in emotionWindow {
+            if let emotion = hand.emotionSignal {
+                hasEmotion = true
+                switch emotion {
+                case .badBeat:
+                    total += 2
+                    lossPoints += 2
+                case .cooler:
+                    total += 2
+                    lossPoints += 2
+                case .tilt:
+                    total += 4
+                    behaviorPoints += 4
+                }
+            }
         }
 
-        return nil
+        // VPIP-only cap: if only VPIP without deviation/loss/emotion, cap at 4
+        if !hasDeviation && !hasLoss && !hasEmotion {
+            total = min(total, 4)
+            behaviorPoints = min(behaviorPoints, 4)
+        }
+
+        return (total, lossPoints, behaviorPoints)
     }
 
-    /// 3. Loss-Chase (逆风追损) — after losses, VPIP spikes trying to recover
-    var lossChaseAlert: TiltCoachMessage? {
-        guard currentHandRecords.count >= 15 else { return nil }
+    /// Risk-score based tilt alert (Loss Tilt or Tech Tilt)
+    private var riskScoreAlert: TiltCoachMessage? {
+        guard sessionHands >= 8 else { return nil }
+        let score = calculateRiskScore()
+        guard score.total >= warningThreshold else { return nil }
 
-        // Signal A: recent results skew negative
-        let vpipHands = currentHandRecords.filter { $0.didVPIP }
-        let recent8 = Array(vpipHands.suffix(8))
-        guard recent8.count >= 5 else { return nil }
+        let isDanger = score.total >= dangerThreshold
+        let isLossDominant = score.lossPoints > score.behaviorPoints
 
-        let lossCount = recent8.filter { $0.result == .notWin }.count
-        let lossRate = Double(lossCount) / Double(recent8.count)
-
-        guard lossRate >= 0.6 else { return nil } // Losing more than 60%
-
-        // Signal B: VPIP spiking after the losses
-        let postLossVPIPRate: Int = {
-            let recent = Array(currentHandRecords.suffix(8))
-            guard !recent.isEmpty else { return 0 }
-            return Int(Double(recent.filter { $0.didVPIP }.count) / Double(recent.count) * 100)
-        }()
-
-        let spike = postLossVPIPRate - lifetimeVPIP
-        guard spike >= 8 else { return nil }
-
-        // Big loss revenge is the strongest signal
-        if hasBigLossRevengeTilt {
+        if isLossDominant {
             return TiltCoachMessage(
-                type: .danger,
-                headline: L10n.s(.tiltLossChaseH, language),
-                detail: L10n.s(.tiltLossChaseD, language)
+                type: isDanger ? .danger : .warning,
+                category: .lossTilt,
+                headline: L10n.s(.lossTiltH, language),
+                detail: isDanger ? L10n.s(.lossTiltDangerD, language) : L10n.s(.lossTiltWarnD, language)
             )
+        } else {
+            return TiltCoachMessage(
+                type: isDanger ? .danger : .warning,
+                category: .techTilt,
+                headline: L10n.s(.techTiltH, language),
+                detail: isDanger ? L10n.s(.techTiltDangerD, language) : L10n.s(.techTiltWarnD, language)
+            )
+        }
+    }
+
+    /// Big Pot — tiered event alert (Large 100-149, Huge 150-249, Massive ≥250)
+    var bigPotAlert: TiltCoachMessage? {
+        guard let lastHand = currentHandRecords.last,
+              lastHand.didVPIP,
+              let bb = lastHand.bbResult,
+              let tier = PotTier.from(bb: bb) else { return nil }
+
+        let handType = lastHand.handType
+        let isStrong = handType.map { premiumHands.contains($0) } ?? false
+        let isWin = bb > 0
+
+        let headline: String
+        switch tier {
+        case .large:   headline = L10n.s(.bigPotH, language)
+        case .huge:    headline = L10n.s(.bigPotHugeH, language)
+        case .massive: headline = L10n.s(.bigPotMassiveH, language)
+        }
+
+        let type: TiltCoachMessage.MessageType
+        let detail: String
+
+        switch (isStrong, isWin, tier) {
+        // Strong hand WIN
+        case (true, true, .large):
+            type = .warning
+            detail = L10n.s(.bigPotWinStrongD, language)
+        case (true, true, .huge):
+            type = .warning
+            detail = L10n.s(.bigPotWinStrongHugeD, language)
+        case (true, true, .massive):
+            type = .warning
+            detail = L10n.s(.bigPotWinStrongMassiveD, language)
+
+        // Strong hand LOSS
+        case (true, false, .large):
+            type = .warning
+            detail = L10n.s(.bigPotLossStrongD, language)
+        case (true, false, .huge):
+            type = .warning
+            detail = L10n.s(.bigPotLossStrongHugeD, language)
+        case (true, false, .massive):
+            type = .danger
+            detail = L10n.s(.bigPotLossStrongMassiveD, language)
+
+        // Weak hand WIN
+        case (false, true, .large):
+            type = .warning
+            detail = L10n.s(.bigPotWinWeakD, language)
+        case (false, true, .huge):
+            type = .warning
+            detail = L10n.s(.bigPotWinWeakHugeD, language)
+        case (false, true, .massive):
+            type = .danger
+            detail = L10n.s(.bigPotWinWeakMassiveD, language)
+
+        // Weak hand LOSS
+        case (false, false, .large):
+            type = .danger
+            detail = L10n.s(.bigPotLossWeakD, language)
+        case (false, false, .huge):
+            type = .danger
+            detail = L10n.s(.bigPotLossWeakHugeD, language)
+        case (false, false, .massive):
+            type = .danger
+            detail = L10n.s(.bigPotLossWeakMassiveD, language)
         }
 
         return TiltCoachMessage(
-            type: .warning,
-            headline: L10n.s(.tiltLossRisingH, language),
-            detail: L10n.s(.tiltLossRisingD, language)
+            type: type,
+            category: .bigPot,
+            headline: headline,
+            detail: detail
         )
     }
 
-    /// 4. Style Drift (风格失真) — playing hands outside personal baseline
-    var styleDriftAlert: TiltCoachMessage? {
-        guard currentHandRecords.count >= 15 else { return nil }
+    // MARK: - Simplified Cooldown (2-state)
 
-        let vpipHands = currentHandRecords.filter { $0.didVPIP }
-        guard vpipHands.count >= 5 else { return nil }
-
-        // Build personal baseline from lifetime data
-        var lifetimeHandTypes: Set<String> = []
-        for session in recentSessions {
-            for record in session.handRecords where record.didVPIP {
-                if let ht = record.handType { lifetimeHandTypes.insert(ht) }
-            }
-        }
-
-        // If not enough lifetime data, skip this check
-        guard lifetimeHandTypes.count >= 8 else { return nil }
-
-        // Check recent hands for types never/rarely played before OR recorded GTO deviations
-        let recentHands = Array(vpipHands.suffix(8))
-        var unusualHands: [String] = []
-
-        for hand in recentHands {
-            guard let ht = hand.handType else { continue }
-            // Count as unusual if: recorded GTO deviation, OR not in lifetime baseline + weak
-            if hand.isGTODeviation == true {
-                unusualHands.append(ht)
-            } else if !lifetimeHandTypes.contains(ht) && isActuallyWeakHand(ht) {
-                unusualHands.append(ht)
-            }
-        }
-
-        if unusualHands.count >= 3 {
-            let examples = Array(Set(unusualHands)).prefix(2).joined(separator: ", ")
-            return TiltCoachMessage(
-                type: .danger,
-                headline: L10n.s(.tiltStyleDepartH, language),
-                detail: String(format: L10n.s(.tiltStyleDepartD, language), examples)
-            )
-        }
-
-        if unusualHands.count >= 2 {
-            return TiltCoachMessage(
-                type: .warning,
-                headline: L10n.s(.tiltStylePatternH, language),
-                detail: L10n.s(.tiltStylePatternD, language)
-            )
-        }
-
-        // Also check progressive loosening as a style drift signal
-        if hasProgressiveLoosening {
-            return TiltCoachMessage(
-                type: .warning,
-                headline: L10n.s(.tiltStyleWidenedH, language),
-                detail: L10n.s(.tiltStyleWidenedD, language)
-            )
-        }
-
-        return nil
-    }
-
-    // MARK: - Cooldown System
-
-    /// Called after every hand record (fold or VPIP) to check phase transitions
+    /// Called after every hand record to check cooldown transitions
     func checkTiltPhaseTransition() {
         switch tiltPhase {
         case .normal:
             guard cooldownModeEnabled else { return }
-            // If a coach message fired, enter observation
-            if sessionHands >= 15 {
-                // Detect which alert type triggered, to tailor cooldown exit conditions
-                if lossChaseAlert != nil {
-                    cooldownTrigger = .lossBased
-                } else if winTiltAlert != nil {
-                    cooldownTrigger = .winBased
-                } else if activeCoachMessage != nil {
-                    cooldownTrigger = .driftBased
-                } else {
-                    return // No alert, stay normal
-                }
-                tiltPhase = .observing
-                phaseStartHandCount = sessionHands
+            guard sessionHands >= 8 else { return }
+
+            // Grace period: don't re-trigger too soon after cooldown ended
+            if lastCooldownEndHandCount > 0 && (sessionHands - lastCooldownEndHandCount) < cooldownGracePeriod {
+                return
             }
 
-        case .observing:
-            let handsSinceWarning = sessionHands - phaseStartHandCount
-            guard handsSinceWarning >= observationWindowSize else { return }
-
-            // Check if behavior improved (using trigger-specific logic)
-            if isStillDeviating(for: cooldownTrigger) {
-                // Upgrade to cooldown
+            // Danger alert → immediate cooldown
+            if let msg = activeCoachMessage, msg.type == .danger {
                 tiltPhase = .cooldown
-                cooldownTotal = initialCooldownHands
-                cooldownRemaining = initialCooldownHands
+                cooldownTotal = cooldownLength
+                cooldownRemaining = cooldownLength
+                cooldownAlreadyExtended = false
                 phaseStartHandCount = sessionHands
-            } else {
-                // Behavior improved, back to normal
-                tiltPhase = .normal
-                phaseStartHandCount = 0
             }
 
         case .cooldown:
             cooldownRemaining = max(0, cooldownTotal - (sessionHands - phaseStartHandCount))
 
             if cooldownRemaining <= 0 {
-                // Cooldown complete
-                tiltPhase = .normal
-                phaseStartHandCount = 0
-                cooldownTotal = 0
-                cooldownRemaining = 0
-            } else if isStillDeviating(for: cooldownTrigger) && cooldownTotal < maxCooldownHands {
-                // Extend cooldown (+5, gentler for win-tilt)
-                let extension_ = cooldownTrigger == .winBased ? 3 : 5
-                let newTotal = min(cooldownTotal + extension_, maxCooldownHands)
-                cooldownRemaining += (newTotal - cooldownTotal)
-                cooldownTotal = newTotal
+                // Cooldown finished — check if still bad
+                let score = calculateRiskScore()
+                if score.total >= warningThreshold && !cooldownAlreadyExtended {
+                    // Extend once
+                    cooldownAlreadyExtended = true
+                    cooldownTotal += cooldownExtension
+                    cooldownRemaining = cooldownExtension
+                    phaseStartHandCount = sessionHands
+                } else {
+                    // Done, back to normal
+                    lastCooldownEndHandCount = sessionHands
+                    tiltPhase = .normal
+                    phaseStartHandCount = 0
+                    cooldownTotal = 0
+                    cooldownRemaining = 0
+                }
             }
-        }
-    }
-
-    /// Check if the user is still deviating, with trigger-specific exit conditions
-    ///
-    /// - lossBased: VPIP elevated OR weak hands OR losses + wide range
-    /// - winBased: VPIP elevated OR weak hands (losses don't count — user is winning)
-    /// - driftBased: VPIP elevated OR weak hands OR losses + wide range
-    private func isStillDeviating(for trigger: CooldownTrigger) -> Bool {
-        let recentHands = Array(currentHandRecords.suffix(5))
-        guard recentHands.count >= 3 else { return false }
-
-        // Shared signal: VPIP rate still elevated
-        let recentVPIPCount = recentHands.filter { $0.didVPIP }.count
-        let recentVPIPRate = Int(Double(recentVPIPCount) / Double(recentHands.count) * 100)
-        let vpipElevated = recentVPIPRate - lifetimeVPIP >= 10
-
-        // Shared signal: Weak hands / GTO deviations still present
-        let weakHandCount = recentHands.filter { hand in
-            // Use recorded GTO deviation if available
-            if let deviation = hand.isGTODeviation { return deviation }
-            guard hand.didVPIP, let ht = hand.handType else { return false }
-            return isActuallyWeakHand(ht)
-        }.count
-        let weakHandsPresent = weakHandCount >= 2
-
-        // Shared signal: High GTO deviation rate in recent hands
-        let gtoDeviations = recentHands.filter { $0.isGTODeviation == true }.count
-        let highDeviationRate = gtoDeviations >= 3
-
-        switch trigger {
-        case .winBased:
-            return vpipElevated || weakHandsPresent || highDeviationRate
-
-        case .lossBased, .driftBased:
-            let recentVPIP = recentHands.filter { $0.didVPIP }
-            let lossCount = recentVPIP.filter { $0.result == .notWin }.count
-            let negativeAndLoose = lossCount >= 2 && recentVPIPCount >= 3
-            return vpipElevated || weakHandsPresent || negativeAndLoose || highDeviationRate
         }
     }
 
@@ -811,36 +1047,31 @@ final class DataService {
         phaseStartHandCount = 0
         cooldownRemaining = 0
         cooldownTotal = 0
-        cooldownTrigger = .driftBased
+        cooldownAlreadyExtended = false
+        lastCooldownEndHandCount = 0
     }
 
     // MARK: - Aggregated Status & Alerts
 
-    /// Returns the most severe coach message, or nil
+    /// Returns the active coach message: big pot first (event), then risk score
     var activeCoachMessage: TiltCoachMessage? {
         guard tiltAlertsEnabled else { return nil }
-        // Priority: loss-chase > style-drift > win-tilt > vpip-drift
-        // (loss-chase is most urgent, vpip-drift is most generic)
-        guard sessionHands >= 15 else { return nil }
 
-        if let msg = lossChaseAlert { return msg }
-        if let msg = styleDriftAlert, msg.type == .danger { return msg }
-        if let msg = winTiltAlert { return msg }
-        if let msg = styleDriftAlert { return msg }
-        if let msg = vpipDriftAlert { return msg }
-        return nil
+        // Big pot is independent event — always check first
+        if let msg = bigPotAlert { return msg }
+
+        // Risk score based alert
+        return riskScoreAlert
     }
 
     var currentStatus: GlowStatus {
         if tiltPhase == .cooldown { return .danger }
-        if tiltPhase == .observing { return .warning }
 
-        guard sessionHands >= 15 else { return .normal }
-        guard thirtyMinHandCount >= 8 else { return .normal }
+        guard sessionHands >= 8 else { return .normal }
 
         if let msg = activeCoachMessage {
             switch msg.type {
-            case .danger: return sessionHands >= 20 ? .danger : .warning
+            case .danger: return .danger
             case .warning: return .warning
             }
         }
@@ -1169,7 +1400,7 @@ final class DataService {
         // 如果打了真正的弱牌（历史不盈利）并输掉大池
         if let lastHand = recentVPIPHands.last,
            let handType = lastHand.handType,
-           isActuallyWeakHand(handType),
+           classifyHand(handType) == .deviation,
            let bb = lastHand.bbResult, bb <= -15 {
             return GTODeviationAlert(
                 message: "\(handType) 是弱牌，刚输掉 \(Int(abs(bb)))BB，请收紧范围",
@@ -1305,6 +1536,101 @@ final class DataService {
             avgTiltDuration: avgTiltDuration
         )
     }
+
+    // MARK: - Today Stats (for Stats page)
+
+    func getTodayStats() -> TodayStats {
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: Date())
+
+        // Gather today's sessions
+        let todaySessions = recentSessions.filter { $0.startTime >= startOfToday }
+
+        var totalHands = 0
+        var vpipHands = 0
+        var bbResult: Double = 0
+        var hasBBData = false
+        var tiltWarnings = 0
+        var tiltDangers = 0
+        var cooldownCount = 0
+        var deviationCount = 0
+        var weakEntryCount = 0
+
+        for session in todaySessions {
+            totalHands += session.totalHands
+            vpipHands += session.vpipHands
+            if let bb = session.totalBBResult {
+                bbResult += bb
+                hasBBData = true
+            }
+
+            for hand in session.handRecords {
+                if hand.isGTODeviation == true && hand.didVPIP {
+                    deviationCount += 1
+                }
+                if hand.didVPIP, let ht = hand.handType {
+                    if GTORange.isObviouslyWeak(hand: ht) {
+                        weakEntryCount += 1
+                    }
+                }
+            }
+        }
+
+        // Include active session if it started today
+        if let active = activeSession, active.startTime >= startOfToday {
+            totalHands += active.totalHands
+            vpipHands += active.vpipHands
+            if let bb = active.totalBBResult {
+                bbResult += bb
+                hasBBData = true
+            }
+
+            for hand in currentHandRecords {
+                if hand.isGTODeviation == true && hand.didVPIP {
+                    deviationCount += 1
+                }
+                if hand.didVPIP, let ht = hand.handType {
+                    if GTORange.isObviouslyWeak(hand: ht) {
+                        weakEntryCount += 1
+                    }
+                }
+            }
+        }
+
+        let vpip = totalHands > 0 ? Int(Double(vpipHands) / Double(totalHands) * 100) : 0
+
+        // Discipline score: start at 100, deduct for bad behavior
+        var discipline = 100
+        discipline -= deviationCount * 5   // -5 per deviation hand
+        discipline -= weakEntryCount * 8   // -8 per weak entry
+        discipline -= tiltDangers * 10     // -10 per danger
+        discipline -= tiltWarnings * 3     // -3 per warning
+        discipline = max(0, min(100, discipline))
+
+        return TodayStats(
+            totalHands: totalHands,
+            vpip: vpip,
+            bbResult: hasBBData ? bbResult : nil,
+            disciplineScore: totalHands >= 10 ? discipline : nil,
+            tiltWarnings: tiltWarnings,
+            tiltDangers: tiltDangers,
+            cooldownCount: cooldownCount,
+            deviationCount: deviationCount,
+            weakEntryCount: weakEntryCount
+        )
+    }
+}
+
+struct TodayStats {
+    let totalHands: Int
+    let vpip: Int
+    let bbResult: Double?
+    let disciplineScore: Int?
+    let tiltWarnings: Int
+    let tiltDangers: Int
+    let cooldownCount: Int
+    let deviationCount: Int
+    let weakEntryCount: Int
 }
 
 // MARK: - Pro 统计模型
@@ -1414,5 +1740,25 @@ struct FatigueStatus {
         case .increasing: return "上升中"
         case .decreasing: return "下降中"
         }
+    }
+}
+
+// MARK: - ASAuthorizationController Delegate
+
+private class SignInDelegate: NSObject, ASAuthorizationControllerDelegate {
+    let completion: (Result<ASAuthorization, Error>) -> Void
+
+    init(completion: @escaping (Result<ASAuthorization, Error>) -> Void) {
+        self.completion = completion
+    }
+
+    func authorizationController(controller: ASAuthorizationController,
+                                  didCompleteWithAuthorization authorization: ASAuthorization) {
+        completion(.success(authorization))
+    }
+
+    func authorizationController(controller: ASAuthorizationController,
+                                  didCompleteWithError error: Error) {
+        completion(.failure(error))
     }
 }

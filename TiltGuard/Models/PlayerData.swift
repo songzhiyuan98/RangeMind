@@ -4,6 +4,7 @@ import SwiftData
 @Model
 final class PlayerData {
     var id: UUID
+    var ownerUserID: String
     var createdAt: Date
     var lifetimeHands: Int
     var lifetimeVPIPHands: Int
@@ -19,11 +20,13 @@ final class PlayerData {
 
     init(
         id: UUID = UUID(),
+        ownerUserID: String = "",
         createdAt: Date = Date(),
         lifetimeHands: Int = 0,
         lifetimeVPIPHands: Int = 0
     ) {
         self.id = id
+        self.ownerUserID = ownerUserID
         self.createdAt = createdAt
         self.lifetimeHands = lifetimeHands
         self.lifetimeVPIPHands = lifetimeVPIPHands

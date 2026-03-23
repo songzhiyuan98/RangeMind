@@ -8,42 +8,32 @@ struct SessionDetailView: View {
 
     private var lang: AppLanguage { languageManager.language }
 
-    private var vpipHands: [HandRecordData] {
-        session.handRecords.filter { $0.didVPIP }
-    }
-
-    private var winCount: Int {
-        vpipHands.filter { $0.result == .win }.count
-    }
-
-    private var winRate: Int {
-        vpipHands.isEmpty ? 0 : Int(Double(winCount) / Double(vpipHands.count) * 100)
-    }
+    private var allHands: [HandRecordData] { session.handRecords }
+    private var vpipHands: [HandRecordData] { allHands.filter { $0.didVPIP } }
+    private var foldHands: [HandRecordData] { allHands.filter { !$0.didVPIP } }
+    private var winCount: Int { vpipHands.filter { $0.result == .win }.count }
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 16) {
+            VStack(spacing: 0) {
                 // Hero BB
-                if let bb = session.totalBBResult, bb != 0 {
-                    HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text(String(format: "%+.0f", bb))
-                            .font(.system(size: 56, weight: .ultraLight, design: .monospaced))
-                            .monospacedDigit()
-                            .foregroundColor(bb > 0 ? .vtAccent : .vtRed)
-                        Text("BB")
-                            .font(.system(size: 16, weight: .medium, design: .monospaced))
-                            .foregroundColor(.vtDim)
-                    }
-                    .padding(.top, 16)
-                }
+                heroSection
+                    .padding(.top, 20)
+                    .padding(.bottom, 28)
 
-                // Basic stats
-                basicStatsCard
+                // Quick stats
+                quickStats
                     .padding(.horizontal, 20)
+                    .padding(.bottom, 28)
+
+                // Detail rows
+                detailSection
+                    .padding(.bottom, 28)
 
                 // Hand records
-                if !vpipHands.isEmpty {
-                    handsSection
+                if !allHands.isEmpty {
+                    handRecordsSection
+                        .padding(.bottom, 20)
                 }
 
                 Spacer().frame(height: 80)
@@ -51,122 +41,199 @@ struct SessionDetailView: View {
         }
         .scrollIndicators(.hidden)
         .background(Color.vtBlack.ignoresSafeArea())
-        .navigationTitle(session.dateLabel(lang))
+        .navigationTitle({
+            if let title = session.title, !title.isEmpty {
+                return "\(session.dateLabel(lang)) · \(title)"
+            }
+            return session.dateLabel(lang)
+        }())
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    // MARK: - Basic Stats
+    // MARK: - Hero
 
-    private var basicStatsCard: some View {
-        VStack(spacing: 0) {
-            statRow("VPIP", value: "\(session.sessionVPIP)%")
-            rowDivider
-            statRow(L10n.s(.hands, lang), value: "\(session.totalHands)")
-            rowDivider
-            statRow(L10n.s(.vpipHands, lang), value: "\(session.vpipHands)")
-            rowDivider
-            statRow(L10n.s(.winRate, lang), value: "\(winCount)/\(vpipHands.count) (\(winRate)%)", color: winRate >= 50 ? .vtAccent : .vtText)
-            rowDivider
-            statRow(L10n.s(.duration, lang), value: session.durationFormatted(lang))
+    private var heroSection: some View {
+        VStack(spacing: 8) {
+            if let bb = session.totalBBResult, bb != 0 {
+                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                    Text(String(format: "%+.0f", bb))
+                        .font(.system(size: 96, weight: .ultraLight, design: .monospaced))
+                        .foregroundColor(.vtText)
+
+                    Text("BB")
+                        .font(.system(size: 32, weight: .ultraLight, design: .monospaced))
+                        .foregroundColor(.vtDim)
+                }
+            } else {
+                Text("\(session.totalHands)")
+                    .font(.system(size: 96, weight: .ultraLight, design: .monospaced))
+                    .foregroundColor(.vtText)
+
+                Text(L10n.s(.hands, lang))
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundColor(.vtDim)
+                    .tracking(2)
+            }
+        }
+    }
+
+    // MARK: - Quick Stats
+
+    private var quickStats: some View {
+        HStack(spacing: 0) {
+            statCell("\(session.totalHands)", L10n.s(.hands, lang))
+            statCell("\(session.sessionVPIP)%", "VPIP")
+
+            if !vpipHands.isEmpty {
+                let winRate = Int(Double(winCount) / Double(vpipHands.count) * 100)
+                statCell("\(winRate)%", L10n.s(.winRate, lang))
+            }
 
             if let bb = session.totalBBResult, session.totalHands >= 10 {
                 let bb100 = (bb / Double(session.totalHands)) * 100
-                rowDivider
-                statRow("BB/100", value: String(format: "%+.1f", bb100), color: bb100 > 0 ? .vtAccent : bb100 < 0 ? .vtRed : .vtText)
+                statCell(String(format: "%.1f", bb100), "BB/100")
             }
-
-            let gto = getGTOStats()
-            if gto.total >= 3 {
-                rowDivider
-                statRow("GTO", value: "\(gto.inRange)/\(gto.total) (\(gto.complianceRate)%)", color: gto.complianceRate >= 80 ? .vtAccent : .vtText)
-            }
-
-            rowDivider
-            statRow(L10n.s(.date, lang), value: dateString, color: .vtDim)
         }
-        .background(Color.vtSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.vtBorder, lineWidth: 1)
-        )
     }
 
-    private func statRow(_ title: String, value: String, color: Color = .vtText) -> some View {
+    private func statCell(_ value: String, _ label: String) -> some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(.system(size: 22, weight: .medium, design: .monospaced))
+                .monospacedDigit()
+                .foregroundColor(.vtText)
+
+            Text(label)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundColor(.vtDim)
+                .tracking(1)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Detail Rows
+
+    private var detailSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(L10n.s(.sessionOverview, lang))
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundColor(.vtDim)
+                .tracking(2)
+                .padding(.horizontal, 32)
+
+            VStack(spacing: 0) {
+                detailRow(L10n.s(.duration, lang), session.durationFormatted(lang))
+                rowDivider
+                detailRow(L10n.s(.vpipHands, lang), "\(vpipHands.count)")
+                rowDivider
+                detailRow(L10n.s(.fold, lang), "\(foldHands.count)")
+                rowDivider
+                detailRow(L10n.s(.tableSizeLabel, lang), session.tableInfoLabel(lang))
+                rowDivider
+                detailRow(L10n.s(.date, lang), dateString)
+
+                let gto = getGTOStats()
+                if gto.total >= 3 {
+                    rowDivider
+                    detailRow("GTO", "\(gto.inRange)/\(gto.total) (\(gto.complianceRate)%)")
+                }
+            }
+            .padding(.horizontal, 32)
+        }
+    }
+
+    private func detailRow(_ title: String, _ value: String) -> some View {
         HStack {
             Text(title)
-                .font(.system(size: 14))
-                .foregroundColor(.vtMuted)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundColor(.vtText)
+
             Spacer()
+
             Text(value)
-                .font(.system(size: 14, weight: .medium, design: .monospaced))
-                .foregroundColor(color)
+                .font(.system(size: 15, weight: .medium, design: .monospaced))
+                .foregroundColor(.vtMuted)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 11)
+        .padding(.vertical, 14)
     }
 
     private var rowDivider: some View {
         Rectangle()
             .fill(Color.vtBorder)
             .frame(height: 0.5)
-            .padding(.horizontal, 16)
     }
 
     // MARK: - Hand Records
 
-    private var handsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("\(L10n.s(.entries, lang)) (\(vpipHands.count))")
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
+    private var handRecordsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("\(L10n.s(.entries, lang)) (\(allHands.count))")
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .foregroundColor(.vtDim)
                 .tracking(2)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, 32)
 
             VStack(spacing: 0) {
-                ForEach(Array(vpipHands.reversed().prefix(30).enumerated()), id: \.element.id) { index, hand in
-                    handRow(hand)
+                ForEach(Array(allHands.reversed().enumerated()), id: \.element.id) { index, hand in
+                    handRow(hand, index: allHands.count - index)
 
-                    if index < min(vpipHands.count, 30) - 1 {
+                    if index < allHands.count - 1 {
                         Rectangle()
                             .fill(Color.vtBorder)
                             .frame(height: 0.5)
-                            .padding(.horizontal, 16)
+                            .padding(.leading, 16)
                     }
                 }
             }
-            .background(Color.vtSurface)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(Color.vtBorder, lineWidth: 1)
-            )
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 32)
         }
     }
 
-    private func handRow(_ hand: HandRecordData) -> some View {
-        HStack(spacing: 8) {
-            Text(hand.handType ?? "—")
-                .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                .foregroundColor(.vtText)
-                .frame(width: 40, alignment: .leading)
+    private func handRow(_ hand: HandRecordData, index: Int) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    if let ht = hand.handType {
+                        Text(ht)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(.vtText)
+                    } else if hand.didVPIP {
+                        Text("VPIP")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(.vtText)
+                    }
+
+                    if !hand.didVPIP {
+                        Text("· FOLD")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.vtMuted)
+                    }
+                }
+
+                Text("#\(index) · \(hand.didVPIP ? L10n.s(.vpip, lang) : L10n.s(.fold, lang))")
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundColor(.vtDim)
+            }
 
             Spacer()
 
-            if let bb = hand.bbResult {
-                Text(String(format: "%+.0f", bb))
-                    .font(.system(size: 13, weight: .medium, design: .monospaced))
-                    .monospacedDigit()
-                    .foregroundColor(bb > 0 ? .vtAccent : bb < 0 ? .vtRed : .vtDim)
-            }
+            if hand.didVPIP {
+                HStack(spacing: 12) {
+                    if let bb = hand.bbResult, bb != 0 {
+                        Text(String(format: "%+.0f", bb))
+                            .font(.system(size: 15, weight: .medium, design: .monospaced))
+                            .monospacedDigit()
+                            .foregroundColor(.vtMuted)
+                    }
 
-            Circle()
-                .fill(hand.result == .win ? Color.vtAccent : Color.white.opacity(0.1))
-                .frame(width: 6, height: 6)
+                    Text(hand.result == .win ? "W" : "L")
+                        .font(.system(size: 15, weight: .medium, design: .monospaced))
+                        .foregroundColor(.vtMuted)
+                }
+            }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.vertical, 14)
+        .contentShape(Rectangle())
     }
 
     // MARK: - Helpers

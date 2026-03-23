@@ -43,7 +43,7 @@ struct AllSessionsView: View {
             )
             .padding(.horizontal, 20)
             .padding(.top, 16)
-            .padding(.bottom, 100)
+            .padding(.bottom, 20)
         }
         .scrollIndicators(.hidden)
         .background(Color.vtBlack.ignoresSafeArea())
@@ -54,12 +54,25 @@ struct AllSessionsView: View {
     private func sessionRow(_ session: SessionData) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(session.dateLabel(lang))
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.vtText)
+                HStack(spacing: 5) {
+                    Text(session.dateLabel(lang))
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.vtText)
+
+                    if let title = session.title, !title.isEmpty {
+                        Text("· \(title)")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.vtMuted)
+                            .lineLimit(1)
+                    }
+                }
 
                 Text("\(session.totalHands) \(L10n.s(.handsCount, lang)) · \(session.durationFormatted(lang))")
                     .font(.system(size: 12, design: .monospaced))
+                    .foregroundColor(.vtDim)
+
+                Text(session.tableInfoLabel(lang))
+                    .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(.vtDim)
             }
 

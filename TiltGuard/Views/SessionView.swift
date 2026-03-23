@@ -5,7 +5,6 @@ struct SessionView: View {
     @Environment(DataService.self) private var dataService
     @Environment(LanguageManager.self) private var languageManager
     @State private var showVPIPInput = false
-    @State private var showFoldInput = false
     @State private var showSummary = false
     @State private var endedSession: SessionData?
     @State private var shakeOffset: CGFloat = 0
@@ -23,10 +22,7 @@ struct SessionView: View {
             }
         }
         .sheet(isPresented: $showVPIPInput) {
-            VPIPInputView(mode: .vpip)
-        }
-        .sheet(isPresented: $showFoldInput) {
-            VPIPInputView(mode: .fold)
+            VPIPInputView()
         }
         .sheet(isPresented: $showSummary) {
             if let session = endedSession {
@@ -102,12 +98,13 @@ struct SessionView: View {
                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
                         .foregroundColor(.vtDim)
                         .tracking(1)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
                         .overlay(
                             RoundedRectangle(cornerRadius: 4, style: .continuous)
                                 .stroke(Color.vtBorder, lineWidth: 1)
                         )
+                        .contentShape(Rectangle())
                 }
             }
             .padding(.horizontal, 20)
@@ -153,7 +150,8 @@ struct SessionView: View {
                     // Action buttons
                     HStack(spacing: 12) {
                         ActionButton(title: L10n.s(.fold, languageManager.language), style: .secondary) {
-                            showFoldInput = true
+                            dataService.recordFold()
+                            hapticLight()
                         }
 
                         ActionButton(title: L10n.s(.vpip, languageManager.language), style: .primary) {
@@ -172,11 +170,13 @@ struct SessionView: View {
                                 .tracking(2)
                                 .padding(.horizontal, 20)
 
-                            VStack(spacing: 0) {
+                            List {
                                 ForEach(Array(recordedHands.reversed().enumerated()), id: \.element.id) { index, hand in
                                     handRecordRow(hand, index: recordedHands.count - index)
-                                        .contentShape(Rectangle())
-                                        .contextMenu {
+                                        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
+                                        .listRowBackground(Color.clear)
+                                        .listRowSeparatorTint(.vtBorder)
+                                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                             Button(role: .destructive) {
                                                 withAnimation {
                                                     dataService.deleteHandRecord(hand)
@@ -185,27 +185,17 @@ struct SessionView: View {
                                                 Label(L10n.s(.delete, languageManager.language), systemImage: "trash")
                                             }
                                         }
-
-                                    if index < recordedHands.count - 1 {
-                                        Rectangle()
-                                            .fill(Color.vtBorder)
-                                            .frame(height: 0.5)
-                                            .padding(.horizontal, 16)
-                                    }
                                 }
                             }
-                            .background(Color.vtSurface)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .stroke(Color.vtBorder, lineWidth: 1)
-                            )
-                            .padding(.horizontal, 20)
+                            .listStyle(.plain)
+                            .scrollContentBackground(.hidden)
+                            .scrollDisabled(true)
+                            .frame(minHeight: CGFloat(recordedHands.count) * 52)
                         }
                         .padding(.top, 24)
                     }
 
-                    Spacer().frame(height: 120)
+                    Spacer().frame(height: 20)
                 }
             }
             .scrollIndicators(.hidden)
@@ -216,23 +206,23 @@ struct SessionView: View {
     private func handRecordRow(_ hand: HandRecordData, index: Int) -> some View {
         HStack(spacing: 10) {
             Text("#\(index)")
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundColor(.vtDim)
-                .frame(width: 32, alignment: .leading)
+                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                .foregroundColor(.vtMuted)
+                .frame(width: 34, alignment: .leading)
 
             HStack(spacing: 6) {
                 Text(hand.handType ?? "VPIP")
-                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 16, weight: .semibold, design: .monospaced))
                     .foregroundColor(.vtText)
 
                 if !hand.didVPIP {
                     Text("FOLD")
-                        .font(.system(size: 9, weight: .medium, design: .monospaced))
-                        .foregroundColor(.vtDim)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(Color.vtBorder.opacity(0.5))
-                        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundColor(.vtMuted)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Color.vtSurface)
+                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                 }
             }
 
@@ -242,24 +232,24 @@ struct SessionView: View {
                 VStack(alignment: .trailing, spacing: 3) {
                     if hand.result == .win {
                         Text(L10n.s(.win, languageManager.language))
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .foregroundColor(.vtAccent)
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .foregroundColor(.vtText)
                     } else {
                         Text(L10n.s(.loss, languageManager.language))
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .foregroundColor(.vtDim)
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .foregroundColor(.vtMuted)
                     }
 
                     if let bb = hand.bbResult {
                         Text(String(format: "%+.0f", bb))
-                            .font(.system(size: 12, weight: .medium, design: .monospaced))
-                            .foregroundColor(bb >= 0 ? .vtAccent : .vtRed)
+                            .font(.system(size: 14, weight: .medium, design: .monospaced))
+                            .foregroundColor(bb >= 0 ? .vtText : .vtRed)
                     }
                 }
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.vertical, 13)
     }
 
     // MARK: - Stats Strip
@@ -269,34 +259,34 @@ struct SessionView: View {
             if isWarmingUp {
                 // Warm-up: just show hand count and lifetime
                 stripCell(value: "\(dataService.sessionHands)", label: L10n.s(.hands, languageManager.language))
-                stripDivider
+
                 stripCell(value: "\(dataService.lifetimeVPIP)%", label: L10n.s(.lifetime, languageManager.language))
-                stripDivider
+
                 if let bb = dataService.activeSession?.totalBBResult, bb != 0 {
                     stripCell(
                         value: String(format: "%+.0f", bb),
                         label: "BB",
-                        color: bb >= 0 ? .vtAccent : .vtRed
+                        color: bb >= 0 ? .vtText : .vtRed
                     )
                 } else {
                     stripCell(value: "—", label: "VPIP")
                 }
             } else if showAbnormalMode && thirtyMinReliable {
                 stripCell(value: "\(dataService.sessionVPIP)%", label: L10n.s(.sessionVPIP, languageManager.language))
-                stripDivider
+
                 stripCell(value: "\(dataService.lifetimeVPIP)%", label: L10n.s(.lifetime, languageManager.language))
-                stripDivider
+
                 stripCell(value: "\(dataService.sessionHands)", label: L10n.s(.hands, languageManager.language))
             } else {
                 stripCell(value: thirtyMinReliable ? "\(dataService.thirtyMinVPIP)%" : "—", label: "30MIN")
-                stripDivider
+
                 stripCell(value: "\(dataService.lifetimeVPIP)%", label: L10n.s(.lifetime, languageManager.language))
-                stripDivider
+
                 if let bb = dataService.activeSession?.totalBBResult, bb != 0 {
                     stripCell(
                         value: String(format: "%+.0f", bb),
                         label: "BB",
-                        color: bb >= 0 ? .vtAccent : .vtRed
+                        color: bb >= 0 ? .vtText : .vtRed
                     )
                 } else {
                     stripCell(value: "\(dataService.sessionHands)", label: L10n.s(.hands, languageManager.language))
@@ -304,47 +294,23 @@ struct SessionView: View {
             }
         }
         .padding(.vertical, 14)
-        .background(Color.vtSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(statusBorderColor, lineWidth: statusBorderWidth)
-        )
         .animation(.easeOut(duration: 0.3), value: dataService.sessionHands)
     }
 
-    private var statusBorderColor: Color {
-        switch dataService.currentStatus {
-        case .normal: return .vtBorder
-        case .warning: return .vtAmber.opacity(0.4)
-        case .danger: return .vtRed.opacity(0.5)
-        }
-    }
-
-    private var statusBorderWidth: CGFloat {
-        dataService.currentStatus == .normal ? 1 : 1.5
-    }
-
     private func stripCell(value: String, label: String, color: Color = .vtText) -> some View {
-        VStack(spacing: 3) {
+        VStack(spacing: 4) {
             Text(value)
-                .font(.system(size: 20, weight: .medium, design: .monospaced))
+                .font(.system(size: 22, weight: .medium, design: .monospaced))
                 .monospacedDigit()
                 .foregroundColor(color)
                 .contentTransition(.numericText())
 
             Text(label)
-                .font(.system(size: 9, weight: .medium, design: .monospaced))
-                .foregroundColor(.vtDim)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundColor(.vtMuted)
                 .tracking(1)
         }
         .frame(maxWidth: .infinity)
-    }
-
-    private var stripDivider: some View {
-        Rectangle()
-            .fill(Color.vtBorder)
-            .frame(width: 1, height: 28)
     }
 
     private var statusColor: Color {
@@ -380,8 +346,6 @@ struct SessionView: View {
             warmUpHero
         } else if dataService.tiltPhase == .cooldown {
             cooldownHero
-        } else if dataService.tiltPhase == .observing {
-            observingHero
         } else if showAbnormalMode && thirtyMinReliable {
             abnormalHero
         } else {
@@ -392,7 +356,7 @@ struct SessionView: View {
     private var warmUpHero: some View {
         VStack(spacing: 12) {
             Text(L10n.s(.establishingBaseline, languageManager.language))
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .foregroundColor(.vtDim)
                 .tracking(2)
 
@@ -400,30 +364,30 @@ struct SessionView: View {
             ZStack {
                 Circle()
                     .stroke(Color.vtBorder, lineWidth: 2)
-                    .frame(width: 100, height: 100)
+                    .frame(width: 120, height: 120)
 
                 Circle()
                     .trim(from: 0, to: CGFloat(dataService.sessionHands) / CGFloat(vpipDisplayThreshold))
-                    .stroke(Color.vtAccent.opacity(0.6), style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                    .frame(width: 100, height: 100)
+                    .stroke(Color.vtText.opacity(0.6), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .frame(width: 120, height: 120)
                     .rotationEffect(.degrees(-90))
                     .animation(.easeOut(duration: 0.3), value: dataService.sessionHands)
 
                 VStack(spacing: 2) {
                     Text("\(dataService.sessionHands)")
-                        .font(.system(size: 32, weight: .ultraLight, design: .monospaced))
+                        .font(.system(size: 40, weight: .ultraLight, design: .monospaced))
                         .foregroundColor(.vtText)
                         .contentTransition(.numericText())
 
                     Text("/ \(vpipDisplayThreshold)")
-                        .font(.system(size: 13, design: .monospaced))
+                        .font(.system(size: 15, design: .monospaced))
                         .foregroundColor(.vtDim)
                 }
             }
 
             let remaining = vpipDisplayThreshold - dataService.sessionHands
             Text("\(remaining) \(L10n.s(.moreToUnlockVPIP, languageManager.language))")
-                .font(.system(size: 12, design: .monospaced))
+                .font(.system(size: 14, design: .monospaced))
                 .foregroundColor(.vtDim)
         }
     }
@@ -431,7 +395,7 @@ struct SessionView: View {
     private var cooldownHero: some View {
         VStack(spacing: 12) {
             Text(L10n.s(.cooldownMode, languageManager.language))
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .foregroundColor(.vtRed)
                 .tracking(2)
 
@@ -439,35 +403,35 @@ struct SessionView: View {
             ZStack {
                 Circle()
                     .stroke(Color.vtBorder, lineWidth: 2)
-                    .frame(width: 100, height: 100)
+                    .frame(width: 120, height: 120)
 
                 Circle()
                     .trim(from: 0, to: dataService.cooldownTotal > 0 ? CGFloat(dataService.cooldownRemaining) / CGFloat(dataService.cooldownTotal) : 0)
                     .stroke(Color.vtRed.opacity(0.7), style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                    .frame(width: 100, height: 100)
+                    .frame(width: 120, height: 120)
                     .rotationEffect(.degrees(-90))
                     .animation(.easeOut(duration: 0.3), value: dataService.cooldownRemaining)
 
                 VStack(spacing: 2) {
                     Text("\(dataService.cooldownRemaining)")
-                        .font(.system(size: 32, weight: .ultraLight, design: .monospaced))
+                        .font(.system(size: 40, weight: .ultraLight, design: .monospaced))
                         .foregroundColor(.vtRed)
                         .contentTransition(.numericText())
 
                     Text("/ \(dataService.cooldownTotal)")
-                        .font(.system(size: 13, design: .monospaced))
+                        .font(.system(size: 15, design: .monospaced))
                         .foregroundColor(.vtDim)
                 }
             }
 
             Text(String(format: L10n.s(.cooldownSuggestion, languageManager.language), dataService.cooldownTotal))
-                .font(.system(size: 12, design: .monospaced))
+                .font(.system(size: 14, design: .monospaced))
                 .foregroundColor(.vtDim)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
 
             Text(L10n.s(.tightenRange2, languageManager.language))
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundColor(.vtRed)
                 .tracking(1)
                 .padding(.horizontal, 10)
@@ -479,58 +443,11 @@ struct SessionView: View {
         }
     }
 
-    private var observingHero: some View {
-        VStack(spacing: 12) {
-            Text(L10n.s(.cooldownObserving, languageManager.language))
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundColor(.vtAmber)
-                .tracking(2)
-
-            // Progress ring
-            let handsSince = dataService.sessionHands - dataService.phaseStartHandCount
-            let windowSize = 5
-
-            ZStack {
-                Circle()
-                    .stroke(Color.vtBorder, lineWidth: 2)
-                    .frame(width: 100, height: 100)
-
-                Circle()
-                    .trim(from: 0, to: CGFloat(handsSince) / CGFloat(windowSize))
-                    .stroke(Color.vtAmber.opacity(0.6), style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                    .frame(width: 100, height: 100)
-                    .rotationEffect(.degrees(-90))
-                    .animation(.easeOut(duration: 0.3), value: handsSince)
-
-                VStack(spacing: 2) {
-                    Text("\(handsSince)")
-                        .font(.system(size: 32, weight: .ultraLight, design: .monospaced))
-                        .foregroundColor(.vtAmber)
-                        .contentTransition(.numericText())
-
-                    Text("/ \(windowSize)")
-                        .font(.system(size: 13, design: .monospaced))
-                        .foregroundColor(.vtDim)
-                }
-            }
-
-            Text(String(format: L10n.s(.cooldownObservingDesc, languageManager.language), windowSize))
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundColor(.vtDim)
-
-            // Still show session VPIP below
-            Text("\(dataService.sessionVPIP)% VPIP")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(.vtDim)
-                .padding(.top, 4)
-        }
-    }
-
     private var abnormalHero: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 8) {
             Text(L10n.s(.thirtyMinVPIP, languageManager.language))
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundColor(.vtDim)
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundColor(.vtMuted)
                 .tracking(2)
 
             HStack(alignment: .firstTextBaseline, spacing: 0) {
@@ -547,8 +464,8 @@ struct SessionView: View {
             let diff = dataService.thirtyMinVPIP - dataService.sessionVPIP
             if diff != 0 {
                 Text(diff > 0 ? "↑\(diff)% \(L10n.s(.vsSession, languageManager.language))" : "↓\(abs(diff))% \(L10n.s(.vsSession, languageManager.language))")
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(.vtDim)
+                    .font(.system(size: 14, weight: .medium, design: .monospaced))
+                    .foregroundColor(.vtMuted)
             }
 
             statusIndicator
@@ -557,10 +474,10 @@ struct SessionView: View {
     }
 
     private var normalHero: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 8) {
             Text(L10n.s(.sessionVPIP, languageManager.language))
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundColor(.vtDim)
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundColor(.vtMuted)
                 .tracking(2)
 
             HStack(alignment: .firstTextBaseline, spacing: 0) {
@@ -571,25 +488,41 @@ struct SessionView: View {
 
                 Text("%")
                     .font(.system(size: 32, weight: .ultraLight, design: .monospaced))
-                    .foregroundColor(.vtDim)
+                    .foregroundColor(.vtMuted)
             }
 
             let diff = dataService.sessionVPIP - dataService.lifetimeVPIP
             if diff != 0 {
                 Text(diff > 0 ? "↑\(diff)% \(L10n.s(.vsLifetime, languageManager.language))" : "↓\(abs(diff))% \(L10n.s(.vsLifetime, languageManager.language))")
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(.vtDim)
+                    .font(.system(size: 14, weight: .medium, design: .monospaced))
+                    .foregroundColor(.vtMuted)
             } else {
                 Text(L10n.s(.eqLifetime, languageManager.language))
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(.vtDim)
+                    .font(.system(size: 14, design: .monospaced))
+                    .foregroundColor(.vtMuted)
             }
 
             Text("\(L10n.s(.handNumber, languageManager.language)) #\(dataService.sessionHands)\(L10n.s(.handNumberSuffix, languageManager.language))")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(.vtDim)
+                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                .foregroundColor(.vtMuted)
                 .padding(.top, 4)
         }
+    }
+
+    private func buildCoachText(headline: String, detail: String, isDanger: Bool) -> AttributedString {
+        var label = AttributedString(headline.uppercased())
+        label.font = .system(size: 11, weight: .bold, design: .monospaced)
+        label.foregroundColor = isDanger ? .vtRed : .vtAmber
+
+        var separator = AttributedString(" · ")
+        separator.font = .system(size: 11, design: .monospaced)
+        separator.foregroundColor = .vtDim
+
+        var body = AttributedString(detail)
+        body.font = .system(size: 12)
+        body.foregroundColor = .vtText
+
+        return label + separator + body
     }
 
     // MARK: - Status Indicator
@@ -603,21 +536,11 @@ struct SessionView: View {
             EmptyView()
 
         case .warning, .danger:
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(status == .danger ? Color.vtRed : Color.vtAmber)
-                    .frame(width: 5, height: 5)
-                Text(status == .danger ? L10n.s(.adjust, languageManager.language) : L10n.s(.watch, languageManager.language))
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundColor(.vtMuted)
-                    .tracking(1)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .overlay(
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .stroke(Color.vtBorder, lineWidth: 1)
-            )
+            let isDanger = status == .danger
+            Text(isDanger ? L10n.s(.adjust, languageManager.language) : L10n.s(.watch, languageManager.language))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundColor(isDanger ? .vtRed : .vtAmber)
+                .tracking(1.5)
         }
     }
 
@@ -626,31 +549,19 @@ struct SessionView: View {
     @ViewBuilder
     private var behaviorAnalysis: some View {
         if let msg = dataService.activeCoachMessage {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(msg.headline)
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .foregroundColor(msg.type == .danger ? .vtRed : .vtAmber)
-
-                Text(msg.detail)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(.vtDim)
-                    .lineSpacing(2)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .background((msg.type == .danger ? Color.vtRed : Color.vtAmber).opacity(0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .stroke((msg.type == .danger ? Color.vtRed : Color.vtAmber).opacity(0.2), lineWidth: 1)
-            )
+            let isDanger = msg.type == .danger
+            Text(buildCoachText(headline: msg.headline, detail: msg.detail, isDanger: isDanger))
+                .font(.system(size: 12, weight: .regular))
+                .multilineTextAlignment(.center)
+                .lineSpacing(2)
+                .frame(maxWidth: .infinity)
         } else {
             if let bb = dataService.activeSession?.totalBBResult, bb != 0 {
                 let bbStr = bb > 0 ? "+\(Int(bb))" : "\(Int(bb))"
                 Text(String(format: L10n.s(.sessionBB, languageManager.language), bbStr))
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(bb > 0 ? .vtAccent : .vtDim)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundColor(bb > 0 ? .vtText : .vtMuted)
+                    .frame(maxWidth: .infinity)
             }
         }
     }
@@ -658,12 +569,8 @@ struct SessionView: View {
     // MARK: - No Session
 
     private var noSessionView: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 12) {
             Spacer()
-
-            Text("♠")
-                .font(.system(size: 48))
-                .foregroundColor(.vtDim)
 
             Text(L10n.s(.noActiveSession, languageManager.language))
                 .font(.system(size: 14, design: .monospaced))

@@ -8,8 +8,8 @@ struct RankSelector: View {
     private let row2 = ["7", "6", "5", "4", "3", "2"]
 
     var body: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 5) {
+        VStack(spacing: 5) {
+            HStack(spacing: 4) {
                 ForEach(row1, id: \.self) { rank in
                     RankCard(
                         rank: rank,
@@ -19,7 +19,7 @@ struct RankSelector: View {
                 }
             }
 
-            HStack(spacing: 5) {
+            HStack(spacing: 4) {
                 ForEach(row2, id: \.self) { rank in
                     RankCard(
                         rank: rank,
@@ -76,15 +76,15 @@ struct RankCard: View {
         Button(action: action) {
             ZStack(alignment: .topTrailing) {
                 Text(rank)
-                    .font(.system(size: 18, weight: .medium, design: .monospaced))
+                    .font(.system(size: 17, weight: isSelected ? .semibold : .medium, design: .monospaced))
                     .foregroundColor(isSelected ? .vtBlack : .vtMuted)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 46)
-                    .background(isSelected ? Color.vtAccent : Color.vtSurface)
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .frame(height: 44)
+                    .background(isSelected ? Color.vtText : Color.vtSurface)
+                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .stroke(isSelected ? Color.vtAccent : Color.vtBorder, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .stroke(isSelected ? Color.vtText : Color.vtBorder, lineWidth: 1)
                     )
 
                 // Pocket pair badge
@@ -93,9 +93,9 @@ struct RankCard: View {
                         .font(.system(size: 8, weight: .bold, design: .monospaced))
                         .foregroundColor(.vtBlack)
                         .frame(width: 12, height: 12)
-                        .background(Color.vtAccent)
+                        .background(Color.vtText)
                         .clipShape(Circle())
-                        .offset(x: 3, y: -3)
+                        .offset(x: 2, y: -2)
                 }
             }
         }

@@ -11,13 +11,12 @@ struct AppearanceSettingsView: View {
 
         ScrollView {
             VStack(spacing: 24) {
-                // Mode picker
                 VStack(alignment: .leading, spacing: 10) {
                     Text(L10n.s(.mode, lang))
-                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
                         .foregroundColor(.vtDim)
                         .tracking(2)
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, 24)
 
                     HStack(spacing: 8) {
                         ForEach(AppearanceMode.allCases, id: \.rawValue) { mode in
@@ -31,11 +30,9 @@ struct AppearanceSettingsView: View {
                             .buttonStyle(.plain)
                         }
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, 24)
                 }
                 .padding(.top, 20)
-
-                Spacer().frame(height: 40)
             }
         }
         .scrollIndicators(.hidden)
@@ -50,7 +47,7 @@ struct AppearanceSettingsView: View {
         return VStack(spacing: 0) {
             // Preview swatch
             ZStack {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(previewBg(mode))
                     .frame(height: 56)
 
@@ -73,15 +70,13 @@ struct AppearanceSettingsView: View {
                 Text(mode.localizedLabel(lang))
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
             }
-            .foregroundColor(isSelected ? .vtAccent : .vtDim)
+            .foregroundColor(isSelected ? .vtText : .vtDim)
             .padding(.bottom, 10)
         }
         .frame(maxWidth: .infinity)
-        .background(isSelected ? Color.vtAccentMuted : Color.vtSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(isSelected ? Color.vtAccent.opacity(0.3) : Color.vtBorder, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(isSelected ? Color.vtText.opacity(0.4) : Color.vtBorder, lineWidth: 1)
         )
     }
 

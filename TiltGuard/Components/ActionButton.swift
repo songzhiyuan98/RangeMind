@@ -26,6 +26,7 @@ struct ActionButton: View {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
                         .stroke(borderColor, lineWidth: 1)
                 )
+                .contentShape(Rectangle())
         }
         .buttonStyle(ScaleButtonStyle())
     }
@@ -41,18 +42,18 @@ struct ActionButton: View {
 
     private var backgroundColor: Color {
         switch style {
-        case .primary: return .vtAccent
-        case .secondary: return .vtSurface
-        case .success: return .vtGreen
-        case .neutral: return .vtSurface
+        case .primary: return .vtText
+        case .secondary: return .clear
+        case .success: return .vtAccent
+        case .neutral: return .clear
         }
     }
 
     private var borderColor: Color {
         switch style {
-        case .primary: return .vtAccent
+        case .primary: return .vtText
         case .secondary: return .vtBorder
-        case .success: return .vtGreen
+        case .success: return .vtAccent
         case .neutral: return .vtBorder
         }
     }

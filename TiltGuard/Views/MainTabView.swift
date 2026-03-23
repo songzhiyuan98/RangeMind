@@ -8,8 +8,23 @@ struct MainTabView: View {
 
     private var lang: AppLanguage { languageManager.language }
 
+    private var safeAreaBottom: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.windows.first?.safeAreaInsets.bottom ?? 0
+    }
+
+    private var tabs: [(icon: String, label: L10n.Key, tag: Int)] {
+        [
+            ("house",     .tabHome,  0),
+            ("bolt",      .tabLive,  1),
+            ("chart.bar", .tabStats, 2),
+            ("person",    .tabMe,    3)
+        ]
+    }
+
     var body: some View {
-        ZStack(alignment: .bottom) {
+        VStack(spacing: 0) {
             Group {
                 switch selectedTab {
                 case 0: HomeView(selectedTab: $selectedTab)
@@ -20,11 +35,35 @@ struct MainTabView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(.easeInOut(duration: 0.25), value: selectedTab)
 
-            CustomTabBar(selectedTab: $selectedTab, lang: lang)
-                .padding(.bottom, 16)
+            // Flat tab bar
+            HStack(spacing: 0) {
+                ForEach(tabs, id: \.tag) { tab in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            selectedTab = tab.tag
+                        }
+                    } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: selectedTab == tab.tag ? "\(tab.icon).fill" : tab.icon)
+                                .font(.system(size: 18))
+
+                            Text(L10n.s(tab.label, lang))
+                                .font(.system(size: 10, weight: .medium))
+                        }
+                        .foregroundColor(selectedTab == tab.tag ? .vtText : .vtDim)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 10)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.bottom, safeAreaBottom)
+            .background(Color.vtBlack)
         }
-        .ignoresSafeArea(.keyboard)
+        .ignoresSafeArea(edges: .bottom)
     }
 }
 

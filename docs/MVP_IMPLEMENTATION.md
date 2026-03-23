@@ -146,75 +146,83 @@
 
 ## Tilt Detection System (Core Feature)
 
-### Architecture: Event-Driven Behavioral Analysis
+> 详细文档见 [TILT_DETECTION.md](./TILT_DETECTION.md)
 
-4 个独立检测器，按优先级排序：
+### 三层架构
 
-#### 1. Loss-Chase (逆风追损) — Priority: Highest
-- **Trigger**: 最近 8 手 VPIP 中 60%+ 输了，且 VPIP 比 baseline 高 8%+
-- **Severe**: Big loss revenge — 大底池输后入池率激增到 40%+
-- **Message**: "追损中 — 大底池后 VPIP 飙升"
+5 个独立检测器，分三层按优先级排列：
 
-#### 2. Style Drift (风格失真) — Priority: High (danger only)
-- **Trigger**: 近期手牌包含从未/很少打过的弱牌
-- **Severe**: 3+ 不在常规范围内的弱牌
-- **Also checks**: Progressive loosening (后半段 VPIP 比前半段高 10%+)
+```
+Layer 1: 情绪驱动层 (最高优先级)
+  Loss Chase danger → Style Drift danger
 
-#### 3. Win-Tilt (顺风膨胀) — Priority: Medium
-- **Trigger**: 胜率 60%+ 且 VPIP 扩张 8%+，弱牌开始出现
-- **Message**: "连赢后范围扩大" / "势头可能正在扩大你的范围"
+Layer 2: 事件 + 情绪层
+  Big Pot danger → Loss Chase warning → Win Tilt → Big Pot warning
 
-#### 4. VPIP Drift (基础漂移) — Priority: Lowest
-- **Trigger**: 30min VPIP 比 lifetime 高 10-15%+
-- **Message**: "范围略宽于你的常规" / "入池范围明显偏宽"
+Layer 3: 行为偏移层 (最低优先级)
+  Style Drift warning → VPIP Drift danger → VPIP Drift warning
+```
+
+### 设计原则
+
+- **danger 保守**: 门槛高，不容易触发，触发即严重
+- **warning 敏感**: 门槛适中，早期提醒，不触发冷静期
+- **只有 danger 才进入冷静期**: warning 只显示消息
+- **VPIP Drift = 数量偏移**: 入池率整体变高
+- **Style Drift = 质量偏移**: 牌型质量变差
+
+### 5 个检测器
+
+| # | 检测器 | 层级 | 触发条件 | 级别 |
+|---|--------|------|----------|------|
+| 1 | **Loss Chase** (追损) | 情绪 | 输率≥60% + VPIP飙升≥8% | warning / danger |
+| 2 | **Style Drift** (风格失真) | 行为 | 近期≥2/4手异常牌型 | warning / danger |
+| 3 | **Big Pot** (大底池) | 事件 | 单手\|BB\|≥100，按强弱牌+输赢分4场景 | warning / danger |
+| 4 | **Win Tilt** (顺风膨胀) | 情绪 | 胜率≥60% + VPIP扩大≥8% | warning only |
+| 5 | **VPIP Drift** (入池漂移) | 行为 | 30min VPIP比生涯高≥10/18% | warning / danger |
 
 ### Status Levels
 
 ```
-Normal  → No glow, no alerts
-Warning → Amber border glow, coach message card
-Danger  → Red border glow, shake animation, coach message
+Normal  → No alerts
+Warning → Coach message card (flat border style)
+Danger  → Coach message card + shake animation
 ```
 
 ---
 
 ## Cooldown Escalation System
 
+### 核心规则
+
+**只有 danger 级别才触发冷静期**。warning 只显示提醒消息，不升级。
+
 ### State Machine
 
 ```
-normal → observing → cooldown → normal
-                  ↘ normal (if behavior improves)
+normal → danger触发 → observing (5手) → 未改善 → cooldown (10手) → normal
+                                      → 改善 → normal
 ```
 
-### Phase Details
+### 冷静期触发映射
 
-| Phase | Duration | Exit Condition |
-|-------|----------|---------------|
-| Normal | — | Coach message fires → enter Observing |
-| Observing | 5 hands | Behavior improved → Normal; Still deviating → Cooldown |
-| Cooldown | 10 hands (initial) | Countdown to 0 → Normal; Still deviating → extend +3/+5 (max 20) |
-
-### Trigger-Specific Exit Conditions
-
-冷静期的退出条件根据触发原因不同而不同：
-
-| Trigger Type | Deviation Check | Extension |
-|-------------|----------------|-----------|
-| `lossBased` (追损) | VPIP elevated OR weak hands OR losses + wide range | +5 hands |
-| `winBased` (顺风) | VPIP elevated OR weak hands (不检查 loss 信号) | +3 hands (更温和) |
-| `driftBased` (漂移) | Same as lossBased | +5 hands |
-
-**核心逻辑**: Win-tilt 的冷静期不判断"亏损后继续宽范围"信号，因为用户本来在赢，问题是过度自信而非追损。延长也更温和。
+| 检测器 | 级别 | 冷静期触发类型 |
+|--------|------|----------------|
+| Loss Chase | danger | lossBased (+5手延长) |
+| Style Drift | danger | driftBased (+5手延长) |
+| Big Pot (弱牌输) | danger | lossBased (+5手延长) |
+| VPIP Drift | danger | driftBased (+5手延长) |
+| Win Tilt | warning | 不触发 |
+| Big Pot (其他) | warning | 不触发 |
 
 ### Deviation Check (`isStillDeviating`)
 
 ```
 Signal A: VPIP rate in last 5 hands still ≥ baseline + 10%
-Signal B: 2+ weak hands played in last 5 hands
-Signal C: (lossBased/driftBased only) 2+ losses + 3+ VPIP entries in last 5
+Signal B: 2+ weak hands / GTO deviations in last 5 hands
+Signal C: (lossBased/driftBased only) 2+ losses + 3+ VPIP entries
 
-Any signal = still deviating
+Any signal = still deviating → extend cooldown (max 25 hands)
 ```
 
 ### UI Presentation
@@ -228,10 +236,23 @@ Any signal = still deviating
 
 ### Notification Settings Page
 
+**主开关:**
+
 | Toggle | Key | Default | Controls |
 |--------|-----|---------|----------|
-| Tilt Alert | `vt_tilt_enabled` | ON | Whether tilt detection & coach messages are shown |
-| Cooldown Mode | `vt_cooldown_enabled` | ON | Whether cooldown escalation system is active |
+| Tilt Alert | `vt_tilt_enabled` | ON | 总开关，关闭后所有检测器停用 |
+| Cooldown Mode | `vt_cooldown_enabled` | ON | 冷静期升级系统 |
+| GTO Advice | `vt_gto_advice_enabled` | ON | 选牌时显示翻前策略建议 |
+
+**检测器开关** (仅在 Tilt Alert 开启时显示):
+
+| Toggle | Key | Default | Controls |
+|--------|-----|---------|----------|
+| Big Pot Alert | `vt_bigpot_enabled` | ON | 大底池警报 (单手≥100BB) |
+| Loss Chase | `vt_losschase_enabled` | ON | 追损检测 |
+| Win Tilt | `vt_wintilt_enabled` | ON | 顺风膨胀检测 |
+| Style Drift | `vt_styledrift_enabled` | ON | 风格偏离检测 |
+| VPIP Drift | `vt_vpipdrift_enabled` | ON | 入池漂移检测 |
 
 ### Other Settings
 
@@ -287,17 +308,21 @@ Any signal = still deviating
 - [x] Hand recording (fold + VPIP with card selection)
 - [x] VPIP calculation (session, 30-min rolling, lifetime)
 - [x] Player type classification
-- [x] 4-detector tilt detection system
-- [x] Cooldown escalation system with trigger-specific logic
-- [x] In-app localization (English/Chinese)
+- [x] 5-detector tilt detection system (三层架构)
+- [x] Cooldown escalation system (danger-only, trigger-specific)
+- [x] Big Pot alert (单手≥100BB, 4场景)
+- [x] Individual detector toggles in settings
+- [x] In-app localization (English/Chinese, 90+ keys)
 - [x] Guest mode architecture
-- [x] Custom tab bar navigation (4 tabs)
+- [x] Welcome / onboarding page with Sign in with Apple
+- [x] Custom flat tab bar navigation (4 tabs)
+- [x] Flat iOS 18 style UI design
 - [x] Settings (appearance, language, feature toggles)
 - [x] Session/hand delete with stats recalculation
 - [x] Haptic feedback system
 
 ### 🔲 Pending
-- [ ] Sign in with Apple authentication
+- [ ] Sign in with Apple authentication (backend)
 - [ ] Cloud data sync
 - [ ] Privacy policy & terms
 - [ ] App Store submission
@@ -307,7 +332,7 @@ Any signal = still deviating
 
 ## Weak Hand Reference
 
-**Hands tracked for tilt detection:**
+**Hands tracked for tilt detection (Style Drift):**
 
 | Category | Examples |
 |----------|----------|
@@ -317,7 +342,17 @@ Any signal = still deviating
 | Marginal | `A9o`, `K8o`, `Q7o` |
 | Connectors | `T9o`, `98o`, `87o` |
 
+**强牌定义 (Big Pot Alert):**
+
+| Category | Examples |
+|----------|----------|
+| Premium Pairs | `AA`, `KK`, `QQ`, `JJ`, `TT`, `99` |
+| Premium Suited | `AKs`, `AQs`, `AJs`, `ATs`, `KQs`, `KJs` |
+| Premium Offsuit | `AKo`, `AQo` |
+
+如果某弱牌历史盈利 (≥ 2 次记录且总 BB > 0)，则不算弱牌。
+
 ---
 
-*Document Version: 2.0*
-*Last Updated: 2026-03-12*
+*Document Version: 3.0*
+*Last Updated: 2026-03-22*

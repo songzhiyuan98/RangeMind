@@ -10,7 +10,8 @@ struct NotificationSettingsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
+            VStack(spacing: 20) {
+                // Tilt Alert
                 VStack(spacing: 0) {
                     toggleRow(
                         icon: "exclamationmark.triangle",
@@ -18,12 +19,12 @@ struct NotificationSettingsView: View {
                         subtitle: L10n.s(.tiltAlertDesc, lang),
                         isOn: $tiltEnabled
                     )
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 20)
 
-                    Rectangle()
-                        .fill(Color.vtBorder)
-                        .frame(height: 0.5)
-                        .padding(.horizontal, 16)
-
+                // Cooldown + GTO
+                VStack(spacing: 0) {
                     toggleRow(
                         icon: "timer",
                         title: L10n.s(.cooldownMode, lang),
@@ -31,10 +32,7 @@ struct NotificationSettingsView: View {
                         isOn: $cooldownEnabled
                     )
 
-                    Rectangle()
-                        .fill(Color.vtBorder)
-                        .frame(height: 0.5)
-                        .padding(.horizontal, 16)
+                    rowDivider
 
                     toggleRow(
                         icon: "book",
@@ -43,14 +41,7 @@ struct NotificationSettingsView: View {
                         isOn: $gtoAdviceEnabled
                     )
                 }
-                .background(Color.vtSurface)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(Color.vtBorder, lineWidth: 1)
-                )
-                .padding(.horizontal, 20)
-                .padding(.top, 20)
+                .padding(.horizontal, 24)
             }
         }
         .scrollIndicators(.hidden)
@@ -59,16 +50,18 @@ struct NotificationSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
+    // MARK: - Helpers
+
     private func toggleRow(icon: String, title: String, subtitle: String, isOn: Binding<Bool>) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 14))
+                .font(.system(size: 16))
                 .foregroundColor(.vtDim)
-                .frame(width: 20)
+                .frame(width: 24)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.system(size: 14))
+                    .font(.system(size: 15))
                     .foregroundColor(.vtText)
 
                 Text(subtitle)
@@ -82,8 +75,14 @@ struct NotificationSettingsView: View {
                 .labelsHidden()
                 .tint(.vtAccent)
         }
-        .padding(.horizontal, 16)
         .padding(.vertical, 14)
+    }
+
+    private var rowDivider: some View {
+        Rectangle()
+            .fill(Color.vtBorder)
+            .frame(height: 0.5)
+            .padding(.leading, 48)
     }
 }
 

@@ -30,8 +30,10 @@ enum L10n {
         case account, settings, about
         case appearance, language, notifications
         case signInWithApple, guest, signInToSync
-        case guestDataLocal, connected
+        case guestDataLocal, connected, signOut, signOutConfirm
+        case editProfile, displayName, chooseAvatar, uploadPhoto, removePhoto, cropPhotoTitle
         case version, privacyPolicy, termsOfUse
+        case feedback, feedbackSubject, feedbackBody
 
         // Language settings
         case languageTitle, languageDescription
@@ -43,6 +45,43 @@ enum L10n {
         case notificationTitle, sessionReminder, tiltAlert
         case sessionReminderDesc, tiltAlertDesc
         case gtoAdviceToggle, gtoAdviceToggleDesc
+
+        // Tilt category toggles (user-facing)
+        case lossTiltToggle, lossTiltToggleDesc
+        case winTiltToggle, winTiltToggleDesc
+        case techTiltToggle, techTiltToggleDesc
+        case bigPotToggle, bigPotToggleDesc
+
+        // Alert intensity
+        case alertIntensity
+        case intensityLight, intensityLightDesc
+        case intensityStandard, intensityStandardDesc
+        case intensityStrict, intensityStrictDesc
+
+        // Advanced settings
+        case advanced, advancedDesc
+        case alertCategories
+        case advancedCustom, advancedCustomDesc, advancedCustomPro
+        // 5 internal detectors (Pro custom mode)
+        case detectorLossChase, detectorLossChaseDesc
+        case detectorWinTilt, detectorWinTiltDesc
+        case detectorStyleDrift, detectorStyleDriftDesc
+        case detectorVpipDrift, detectorVpipDriftDesc
+        case detectorBigPot, detectorBigPotDesc
+        case detectorPriority
+
+        // Onboarding
+        case welcomeTitle, welcomeSubtitle
+        case welcomeFeature1, welcomeFeature2, welcomeFeature3
+        case continueAsGuest
+        case onboardingSkip, onboardingContinue
+        case onboardingDetectTitle, onboardingDetectBody
+        case onboardingDisciplineTitle, onboardingDisciplineBody
+        case onboardingProTitle, onboardingProBody
+        case onboardingProFeature1, onboardingProFeature2, onboardingProFeature3, onboardingProFeature4
+        case onboardingProMonthly, onboardingProYearly, onboardingProOr
+        case onboardingProTrial, onboardingProFree, onboardingProEarly
+        case onboardingSignInTitle, onboardingSignInBody
 
         // Guest mode
         case guestSession, guestDataNotSaved
@@ -60,6 +99,11 @@ enum L10n {
 
         // Stats view extras
         case std, dev
+        case todayPerformance, playStyle
+        case disciplineScore, netResult, resultTrackingDisabled
+        case tiltWarnings, tiltDangers, cooldownCompleted
+        case baselineVPIP, deviationHands, deviationHandsDesc
+        case weakHandEntries, weakHandEntriesDesc
 
         // Session view extras
         case vsSession, vsLifetime, eqLifetime
@@ -86,21 +130,20 @@ enum L10n {
         case appName, appFullName
 
         // General
-        case cancel, done, save, delete
+        case cancel, done, save, delete, optional
         case win, loss
         case sessionComplete
         case yourHand, positionLabel, action, bbAmount
 
-        // Tilt Coach
-        case tiltVpipDriftDangerH, tiltVpipDriftDangerD
-        case tiltVpipDriftWarnH, tiltVpipDriftWarnD
-        case tiltWinStreakH, tiltWinStreakD
-        case tiltWinMomentumH, tiltWinMomentumD
-        case tiltLossChaseH, tiltLossChaseD
-        case tiltLossRisingH, tiltLossRisingD
-        case tiltStyleDepartH, tiltStyleDepartD
-        case tiltStylePatternH, tiltStylePatternD
-        case tiltStyleWidenedH, tiltStyleWidenedD
+        // Tilt Coach — simplified 4-category messages
+        case lossTiltH, lossTiltWarnD, lossTiltDangerD
+        case winTiltH, winTiltD
+        case techTiltH, techTiltWarnD, techTiltDangerD
+        case bigPotH, bigPotHugeH, bigPotMassiveH
+        case bigPotWinStrongD, bigPotWinStrongHugeD, bigPotWinStrongMassiveD
+        case bigPotLossStrongD, bigPotLossStrongHugeD, bigPotLossStrongMassiveD
+        case bigPotWinWeakD, bigPotWinWeakHugeD, bigPotWinWeakMassiveD
+        case bigPotLossWeakD, bigPotLossWeakHugeD, bigPotLossWeakMassiveD
         case sessionBB
         case statsLocked, statsLockedDesc
         case playMoreHands
@@ -110,6 +153,13 @@ enum L10n {
         case gtoAllPositions, gtoMidLate, gtoLateOnly, gtoBtnOnly
         case gtoPremium, gtoFoldPre
         case positionGuide, sixMax, nineMax, tapForGuide
+        case gameModeCash, gameModeTournament
+        case gameModeLabel, tableSizeLabel, tableStyleLabel
+        case tableSizeHU, tableSizeSixMax, tableSizeNineMax, tableSizeFullRing
+        case tableStyleStandard, tableStyleLoose, tableStyleFriendly
+        case sessionTitleLabel, sessionTitlePlaceholder
+        case vpipOptionalHint
+        case emotionSignalLabel, emotionBadBeat, emotionCooler, emotionTilt
         case posUtgDesc, posMpDesc, posCoDesc, posBtnDesc, posSbDesc, posBbDesc
         case posUtg1Desc, posUtg2Desc, posLjDesc, posHjDesc
 
@@ -131,6 +181,30 @@ enum L10n {
         switch lang {
         case .english: return en(key)
         case .chinese: return zh(key)
+        }
+    }
+
+    static func gameModeName(_ mode: GameMode, _ lang: AppLanguage) -> String {
+        switch mode {
+        case .cash: return s(.gameModeCash, lang)
+        case .tournament: return s(.gameModeTournament, lang)
+        }
+    }
+
+    static func tableSizeName(_ size: TableSize, _ lang: AppLanguage) -> String {
+        switch size {
+        case .headsUp: return s(.tableSizeHU, lang)
+        case .sixMax: return s(.tableSizeSixMax, lang)
+        case .nineMax: return s(.tableSizeNineMax, lang)
+        case .fullRing: return s(.tableSizeFullRing, lang)
+        }
+    }
+
+    static func tableStyleName(_ style: PokerTableStyle, _ lang: AppLanguage) -> String {
+        switch style {
+        case .standard: return s(.tableStyleStandard, lang)
+        case .loose: return s(.tableStyleLoose, lang)
+        case .friendly: return s(.tableStyleFriendly, lang)
         }
     }
 
@@ -179,7 +253,7 @@ enum L10n {
         case .tiltAnalysis: return "TILT ANALYSIS"
         case .rate: return "RATE"
         case .avgDur: return "AVG DUR"
-        case .highTiltFrequency: return "High tilt frequency. Consider breaks after losses."
+        case .highTiltFrequency: return "Elevated tilt frequency. Build in breaks post-loss."
         case .playerProfileUnlocks: return "Player profile unlocks at 100 hands"
         case .noDataYet: return "No data yet"
 
@@ -194,9 +268,26 @@ enum L10n {
         case .signInToSync: return "Sign in to sync your data"
         case .guestDataLocal: return "Guest data is stored locally only"
         case .connected: return "CONNECTED"
+        case .signOut: return "SIGN OUT"
+        case .signOutConfirm: return "Are you sure you want to sign out?"
+        case .editProfile: return "Edit Profile"
+        case .displayName: return "Display Name"
+        case .chooseAvatar: return "Choose Avatar"
+        case .uploadPhoto: return "Upload Photo"
+        case .removePhoto: return "Remove Photo"
+        case .cropPhotoTitle: return "Move and Scale"
         case .version: return "Version"
         case .privacyPolicy: return "Privacy Policy"
         case .termsOfUse: return "Terms of Use"
+        case .feedback: return "Feedback & Bug Report"
+        case .feedbackSubject: return "[TiltGuard Feedback] v"
+        case .feedbackBody: return """
+        \n\n\n--- System Info (do not delete) ---
+        Please describe your issue above:
+        • Tilt not detected? Describe what happened.
+        • False alert? What were you doing?
+        • Feature request? Tell us your idea.
+        """
 
         case .languageTitle: return "Language"
         case .languageDescription: return "Choose your preferred language"
@@ -209,10 +300,71 @@ enum L10n {
         case .notificationTitle: return "Notifications"
         case .sessionReminder: return "Session Reminder"
         case .tiltAlert: return "Tilt Alert"
-        case .sessionReminderDesc: return "Remind to log hands during active session"
-        case .tiltAlertDesc: return "Alert when tilt behavior is detected"
+        case .sessionReminderDesc: return "Prompt to log hands during live sessions"
+        case .tiltAlertDesc: return "Notify when behavioral drift is detected"
         case .gtoAdviceToggle: return "GTO Advice"
-        case .gtoAdviceToggleDesc: return "Show preflop strategy tips when selecting hands"
+        case .gtoAdviceToggleDesc: return "Display preflop range guidance during hand entry"
+
+        case .lossTiltToggle: return "Loss Tilt"
+        case .lossTiltToggleDesc: return "Detect VPIP spike following losses"
+        case .winTiltToggle: return "Win Tilt"
+        case .winTiltToggleDesc: return "Detect range expansion after winning streaks"
+        case .techTiltToggle: return "Technical Tilt"
+        case .techTiltToggleDesc: return "Detect deviation from your baseline style"
+        case .bigPotToggle: return "Big Pot"
+        case .bigPotToggleDesc: return "Flag single hands exceeding 100BB"
+        case .alertIntensity: return "ALERT INTENSITY"
+        case .intensityLight: return "Light"
+        case .intensityLightDesc: return "Only critical alerts"
+        case .intensityStandard: return "Standard"
+        case .intensityStandardDesc: return "Balanced alerts"
+        case .intensityStrict: return "Strict"
+        case .intensityStrictDesc: return "More sensitive detection"
+        case .advanced: return "Advanced"
+        case .advancedDesc: return "Fine-tune alert categories and sensitivity"
+        case .advancedCustom: return "Custom Mode"
+        case .advancedCustomDesc: return "Full control over detectors and priority"
+        case .advancedCustomPro: return "PRO"
+        case .detectorLossChase: return "Loss Chase"
+        case .detectorLossChaseDesc: return "Detects VPIP spike after consecutive losses"
+        case .detectorWinTilt: return "Win Tilt"
+        case .detectorWinTiltDesc: return "Detects range expansion after winning streak"
+        case .detectorStyleDrift: return "Style Drift"
+        case .detectorStyleDriftDesc: return "Detects unusual hand type selections"
+        case .detectorVpipDrift: return "VPIP Drift"
+        case .detectorVpipDriftDesc: return "Detects 30-min VPIP deviation from baseline"
+        case .detectorBigPot: return "Big Pot"
+        case .detectorBigPotDesc: return "Alerts after a ≥100BB single hand"
+        case .detectorPriority: return "DETECTION PRIORITY"
+        case .alertCategories: return "ALERT CATEGORIES"
+
+        // Onboarding
+        case .welcomeTitle: return "Welcome to TiltGuard"
+        case .welcomeSubtitle: return "Stay disciplined at the poker table.\nTrack your play and detect tilt before it costs you."
+        case .welcomeFeature1: return "Live VPIP tracking"
+        case .welcomeFeature2: return "Intelligent tilt detection"
+        case .welcomeFeature3: return "Player profile & insights"
+        case .continueAsGuest: return "Continue as Guest"
+        case .onboardingSkip: return "Skip"
+        case .onboardingContinue: return "Continue"
+        case .onboardingDetectTitle: return "Real-time Tilt Detection"
+        case .onboardingDetectBody: return "The app monitors your play and alerts you when your decisions start drifting from your normal strategy."
+        case .onboardingDisciplineTitle: return "Protect Your Edge"
+        case .onboardingDisciplineBody: return "Eliminate emotional leaks.\nStabilize your strategy.\nDefend your bankroll."
+        case .onboardingProTitle: return "TiltGuard Pro"
+        case .onboardingProBody: return "Advanced behavioral analysis\nand deep session insights."
+        case .onboardingProFeature1: return "5 detectors with custom priority"
+        case .onboardingProFeature2: return "Adaptive cooldown system"
+        case .onboardingProFeature3: return "Deep session analytics"
+        case .onboardingProFeature4: return "Long-term behavioral trends"
+        case .onboardingProMonthly: return "$2.99 / month"
+        case .onboardingProYearly: return "$14.99 / year"
+        case .onboardingProOr: return "or"
+        case .onboardingProTrial: return "Start Free Trial"
+        case .onboardingProFree: return "Continue with Free Version"
+        case .onboardingProEarly: return "Early Supporter Price"
+        case .onboardingSignInTitle: return "Get Started"
+        case .onboardingSignInBody: return "Sign in to keep your stats across sessions.\nGuest mode stores data only on this device."
 
         case .guestSession: return "Guest Session"
         case .guestDataNotSaved: return "Data will not be saved"
@@ -240,6 +392,19 @@ enum L10n {
 
         case .std: return "std"
         case .dev: return "dev"
+        case .todayPerformance: return "TODAY"
+        case .playStyle: return "PLAY STYLE"
+        case .disciplineScore: return "Discipline"
+        case .netResult: return "Net Result"
+        case .resultTrackingDisabled: return "Result tracking disabled"
+        case .tiltWarnings: return "Warnings"
+        case .tiltDangers: return "Dangers"
+        case .cooldownCompleted: return "Cooldown completed"
+        case .baselineVPIP: return "Baseline"
+        case .deviationHands: return "Deviation hands"
+        case .deviationHandsDesc: return "Played outside normal range"
+        case .weakHandEntries: return "Weak entries"
+        case .weakHandEntriesDesc: return "Weak hand VPIP"
 
         case .vsSession: return "vs session"
         case .vsLifetime: return "vs lifetime"
@@ -276,9 +441,9 @@ enum L10n {
         case .weakEntries: return "Weak range entries"
         case .weakEntriesCooling: return "Weak entries during cooldown"
         case .sessionRating: return "SESSION DISCIPLINE"
-        case .insightNormal: return "Your VPIP stayed close to your usual style. Good discipline this session."
-        case .insightTilted: return "Your range widened after a rough stretch. Watch for tilt patterns in future sessions."
-        case .insightRecovered: return "A tilt pattern was detected mid-session, but your play stabilized after the cooling phase."
+        case .insightNormal: return "VPIP within baseline. Discipline held."
+        case .insightTilted: return "Range widened under pressure. Review tilt triggers."
+        case .insightRecovered: return "Tilt detected mid-session. Stabilized after cooldown."
         case .comparedToAvg: return "vs average"
 
         case .allSessions: return "All Sessions"
@@ -290,6 +455,7 @@ enum L10n {
         case .done: return "Done"
         case .save: return "Save"
         case .delete: return "Delete"
+        case .optional: return "optional"
         case .win: return "WIN"
         case .loss: return "LOSS"
         case .sessionComplete: return "SESSION COMPLETE"
@@ -298,25 +464,30 @@ enum L10n {
         case .action: return "ACTION"
         case .bbAmount: return "BB AMOUNT"
 
-        // Tilt Coach
-        case .tiltVpipDriftDangerH: return "Playing significantly wider than usual"
-        case .tiltVpipDriftDangerD: return "Your recent VPIP is %d%% above your baseline. Check if each hand meets your standard."
-        case .tiltVpipDriftWarnH: return "Range slightly wider than your norm"
-        case .tiltVpipDriftWarnD: return "Recent VPIP trending above baseline. Stay aware of your hand selection."
-        case .tiltWinStreakH: return "Hot streak expanding your range"
-        case .tiltWinStreakD: return "You're running well and starting to play hands outside your usual style. Stay disciplined."
-        case .tiltWinMomentumH: return "Momentum may be widening your range"
-        case .tiltWinMomentumD: return "After recent wins your VPIP is %d%% above baseline. Lock in the gains."
-        case .tiltLossChaseH: return "Chasing losses — VPIP spiking after big pot"
-        case .tiltLossChaseD: return "Your entry rate jumped after a significant loss. Consider taking a 5-minute break."
-        case .tiltLossRisingH: return "VPIP rising after recent losses"
-        case .tiltLossRisingD: return "After a rough stretch your play is getting looser. Take a breath before the next hand."
-        case .tiltStyleDepartH: return "Significant departure from your usual style"
-        case .tiltStyleDepartD: return "Hands like %@ are outside your normal range. Pause and refocus."
-        case .tiltStylePatternH: return "Some hands outside your usual pattern"
-        case .tiltStylePatternD: return "Recent entries include hands you don't normally play. Check if deliberate."
-        case .tiltStyleWidenedH: return "Your range has widened since session start"
-        case .tiltStyleWidenedD: return "Second half VPIP is notably higher than the first half. Consider whether intentional."
+        // Tilt Coach — 4 categories
+        case .lossTiltH: return "Loss Tilt"
+        case .lossTiltWarnD: return "VPIP elevated post-loss. Narrow your range."
+        case .lossTiltDangerD: return "Significant tilt detected. Step away for 5 minutes."
+        case .winTiltH: return "Win Tilt"
+        case .winTiltD: return "Range widening after wins. Lock in your edge — don't give it back."
+        case .techTiltH: return "Technical Tilt"
+        case .techTiltWarnD: return "Range drifting from baseline. Re-check hand selection."
+        case .techTiltDangerD: return "Major style deviation. Return to your core range."
+        case .bigPotH: return "Big Pot"
+        case .bigPotHugeH: return "Huge Pot"
+        case .bigPotMassiveH: return "Massive Pot"
+        case .bigPotWinStrongD: return "Big win secured. Stay sharp — momentum can loosen your range."
+        case .bigPotWinStrongHugeD: return "Huge pot won. Stabilize your rhythm before continuing."
+        case .bigPotWinStrongMassiveD: return "Massive pot won. Emotional spike likely — observe your next few hands."
+        case .bigPotLossStrongD: return "Correct play, wrong result. That's variance — stay the course."
+        case .bigPotLossStrongHugeD: return "Huge pot lost with a strong hand. Even correct plays this size affect decisions."
+        case .bigPotLossStrongMassiveD: return "Massive pot lost. Emotional impact is real — tighten up or take a break."
+        case .bigPotWinWeakD: return "Marginal hand, lucky outcome. Don't let it expand your range."
+        case .bigPotWinWeakHugeD: return "Marginal hand won a huge pot. Easy to overestimate your reads."
+        case .bigPotWinWeakMassiveD: return "Marginal hand won a massive pot. Highest risk of range inflation."
+        case .bigPotLossWeakD: return "Weak hand in a big pot. Tighten up immediately."
+        case .bigPotLossWeakHugeD: return "Weak hand lost a huge pot. Clear discipline breach — reset now."
+        case .bigPotLossWeakMassiveD: return "Weak hand lost a massive pot. Strongly recommend pausing."
         case .sessionBB: return "Session %@BB"
         case .statsLocked: return "Sign in to view statistics"
         case .statsLockedDesc: return "Your playing data will be analyzed after signing in"
@@ -326,16 +497,35 @@ enum L10n {
         case .gtoAdvice: return "GTO PREFLOP"
         case .gtoOpenRaise: return "OPEN"
         case .gtoNotInRange: return "—"
-        case .gtoAllPositions: return "Open raise from any position. Strong hand."
-        case .gtoMidLate: return "Open from MP+. Fold in early position."
-        case .gtoLateOnly: return "Only open from CO or later. Fold EP/MP."
-        case .gtoBtnOnly: return "Marginal — only open on BTN or SB."
-        case .gtoPremium: return "Always raise or 3-bet. Top of range."
-        case .gtoFoldPre: return "Weak hand — fold preflop."
+        case .gtoAllPositions: return "Open any position — solid equity hand."
+        case .gtoMidLate: return "Open MP+. Fold early position."
+        case .gtoLateOnly: return "CO+ only. Fold EP/MP."
+        case .gtoBtnOnly: return "BTN/SB only — marginal open."
+        case .gtoPremium: return "Premium. Raise or 3-bet any seat."
+        case .gtoFoldPre: return "Below range — fold pre."
         case .positionGuide: return "POSITION GUIDE"
         case .sixMax: return "6-MAX"
         case .nineMax: return "9-MAX"
         case .tapForGuide: return "Tap for position guide"
+        case .gameModeCash: return "Cash"
+        case .gameModeTournament: return "Tournament"
+        case .gameModeLabel: return "GAME MODE"
+        case .tableSizeLabel: return "TABLE SIZE"
+        case .tableStyleLabel: return "TABLE STYLE"
+        case .tableSizeHU: return "Heads-Up"
+        case .tableSizeSixMax: return "6-MAX"
+        case .tableSizeNineMax: return "9-MAX"
+        case .tableSizeFullRing: return "Full Ring"
+        case .tableStyleStandard: return "Standard"
+        case .tableStyleLoose: return "Loose"
+        case .tableStyleFriendly: return "Friendly"
+        case .sessionTitleLabel: return "LOCATION"
+        case .sessionTitlePlaceholder: return "Bellagio, Home Game..."
+        case .vpipOptionalHint: return "Optional — improves tilt detection accuracy"
+        case .emotionSignalLabel: return "FEELING (OPTIONAL)"
+        case .emotionBadBeat: return "Bad Beat"
+        case .emotionCooler: return "Cooler"
+        case .emotionTilt: return "Tilt"
         case .posUtgDesc: return "Under the Gun — first to act, tightest range"
         case .posMpDesc: return "Middle Position — slightly wider than UTG"
         case .posCoDesc: return "Cutoff — second-to-last, wide range"
@@ -355,15 +545,15 @@ enum L10n {
         case .strategyInsight: return ""
         case .targetVPIP: return "TARGET VPIP"
         case .currentVPIP: return "CURRENT VPIP"
-        case .strategyTightDesc: return "Conservative play for tough tables. Focus on premium hands only."
-        case .strategyBalancedDesc: return "Optimal for 6-max balanced strategy range."
-        case .strategyLooseDesc: return "Aggressive play for passive tables. Wider range selection."
+        case .strategyTightDesc: return "Premium-only. Ideal for tough lineups."
+        case .strategyBalancedDesc: return "Balanced 6-max range. Standard GTO approach."
+        case .strategyLooseDesc: return "Wide range for passive tables. High aggression."
 
         // Cooldown
         case .cooldownMode: return "COOLDOWN MODE"
-        case .cooldownSuggestion: return "Tighten your range for the next %d hands"
+        case .cooldownSuggestion: return "Tighten range for the next %d hands"
         case .cooldownRemaining: return "%d hands remaining"
-        case .cooldownExtended: return "Cooldown extended — still deviating"
+        case .cooldownExtended: return "Extended — deviation continues"
         case .cooldownObserving: return "OBSERVING"
         case .cooldownObservingDesc: return "Checking behavior over next %d hands"
         case .cooldownModeDesc: return "Suggest tightening range after repeated deviation"
@@ -416,7 +606,7 @@ enum L10n {
         case .tiltAnalysis: return "上头分析"
         case .rate: return "概率"
         case .avgDur: return "平均时长"
-        case .highTiltFrequency: return "上头频率偏高，建议输牌后休息"
+        case .highTiltFrequency: return "上头频率偏高，建议连输后安排休息。"
         case .playerProfileUnlocks: return "100 手后解锁玩家画像"
         case .noDataYet: return "暂无数据"
 
@@ -431,9 +621,26 @@ enum L10n {
         case .signInToSync: return "登录以同步数据"
         case .guestDataLocal: return "游客数据仅存储在本地"
         case .connected: return "已连接"
+        case .signOut: return "退出登录"
+        case .signOutConfirm: return "确定要退出登录吗？"
+        case .editProfile: return "编辑资料"
+        case .displayName: return "显示名称"
+        case .chooseAvatar: return "选择头像"
+        case .uploadPhoto: return "上传照片"
+        case .removePhoto: return "移除照片"
+        case .cropPhotoTitle: return "移动和缩放"
         case .version: return "版本"
         case .privacyPolicy: return "隐私政策"
         case .termsOfUse: return "使用条款"
+        case .feedback: return "反馈与问题报告"
+        case .feedbackSubject: return "[TiltGuard 反馈] v"
+        case .feedbackBody: return """
+        \n\n\n--- 系统信息（请勿删除）---
+        请在上方描述你的问题：
+        • 上头了但系统没检测到？描述当时的情况。
+        • 没上头却收到警报？你当时在做什么？
+        • 功能建议？告诉我们你的想法。
+        """
 
         case .languageTitle: return "语言"
         case .languageDescription: return "选择你偏好的语言"
@@ -446,10 +653,71 @@ enum L10n {
         case .notificationTitle: return "通知"
         case .sessionReminder: return "牌局提醒"
         case .tiltAlert: return "上头警报"
-        case .sessionReminderDesc: return "牌局进行中提醒记录手牌"
-        case .tiltAlertDesc: return "检测到上头行为时发出警报"
+        case .sessionReminderDesc: return "牌局进行中提示记录手牌"
+        case .tiltAlertDesc: return "检测到行为偏移时通知"
         case .gtoAdviceToggle: return "GTO 建议"
-        case .gtoAdviceToggleDesc: return "选牌时显示翻前策略建议"
+        case .gtoAdviceToggleDesc: return "录入手牌时显示翻前范围指引"
+
+        case .lossTiltToggle: return "输后上头"
+        case .lossTiltToggleDesc: return "检测连输后入池率飙升"
+        case .winTiltToggle: return "赢后膨胀"
+        case .winTiltToggleDesc: return "检测连赢后范围扩大"
+        case .techTiltToggle: return "技术上头"
+        case .techTiltToggleDesc: return "检测偏离基线打法"
+        case .bigPotToggle: return "大底池"
+        case .bigPotToggleDesc: return "标记超过 100BB 的单手"
+        case .alertIntensity: return "提醒强度"
+        case .intensityLight: return "轻度"
+        case .intensityLightDesc: return "仅关键提醒"
+        case .intensityStandard: return "标准"
+        case .intensityStandardDesc: return "均衡提醒"
+        case .intensityStrict: return "严格"
+        case .intensityStrictDesc: return "更敏感的检测"
+        case .advanced: return "高级"
+        case .advancedDesc: return "微调提醒类型和灵敏度"
+        case .advancedCustom: return "自定义模式"
+        case .advancedCustomDesc: return "完全控制检测器和优先级"
+        case .advancedCustomPro: return "PRO"
+        case .detectorLossChase: return "逆风追损"
+        case .detectorLossChaseDesc: return "检测连输后入池率飙升"
+        case .detectorWinTilt: return "顺风膨胀"
+        case .detectorWinTiltDesc: return "检测连赢后范围扩大"
+        case .detectorStyleDrift: return "风格失真"
+        case .detectorStyleDriftDesc: return "检测异常牌型选择"
+        case .detectorVpipDrift: return "入池漂移"
+        case .detectorVpipDriftDesc: return "检测 30 分钟 VPIP 偏离基线"
+        case .detectorBigPot: return "大底池"
+        case .detectorBigPotDesc: return "单手 ≥100BB 事件提醒"
+        case .detectorPriority: return "检测优先级"
+        case .alertCategories: return "提醒类型"
+
+        // Welcome
+        case .welcomeTitle: return "欢迎使用 TiltGuard"
+        case .welcomeSubtitle: return "在牌桌上保持纪律。\n追踪你的打法，在上头前及时发现。"
+        case .welcomeFeature1: return "实时 VPIP 追踪"
+        case .welcomeFeature2: return "智能上头检测"
+        case .welcomeFeature3: return "玩家画像与洞察"
+        case .continueAsGuest: return "以游客身份继续"
+        case .onboardingSkip: return "跳过"
+        case .onboardingContinue: return "继续"
+        case .onboardingDetectTitle: return "实时上头检测"
+        case .onboardingDetectBody: return "实时监控你的打法，当你的决策开始偏离正常策略时发出警报。"
+        case .onboardingDisciplineTitle: return "守住你的优势"
+        case .onboardingDisciplineBody: return "消除情绪漏洞。\n稳定你的策略。\n保护你的资金。"
+        case .onboardingProTitle: return "TiltGuard Pro"
+        case .onboardingProBody: return "高级行为分析\n与深度牌局洞察。"
+        case .onboardingProFeature1: return "5 大检测器 + 自定义优先级"
+        case .onboardingProFeature2: return "自适应冷静期系统"
+        case .onboardingProFeature3: return "深度牌局分析"
+        case .onboardingProFeature4: return "长期行为趋势"
+        case .onboardingProMonthly: return "¥18 / 月"
+        case .onboardingProYearly: return "¥98 / 年"
+        case .onboardingProOr: return "或"
+        case .onboardingProTrial: return "开始免费试用"
+        case .onboardingProFree: return "继续使用免费版"
+        case .onboardingProEarly: return "早期支持者价格"
+        case .onboardingSignInTitle: return "开始使用"
+        case .onboardingSignInBody: return "登录以保留你的统计数据。\n游客模式仅在本设备存储数据。"
 
         case .guestSession: return "游客牌局"
         case .guestDataNotSaved: return "数据不会被保存"
@@ -477,6 +745,19 @@ enum L10n {
 
         case .std: return "标准"
         case .dev: return "偏差"
+        case .todayPerformance: return "今日表现"
+        case .playStyle: return "打法分析"
+        case .disciplineScore: return "纪律评分"
+        case .netResult: return "净盈亏"
+        case .resultTrackingDisabled: return "未记录盈亏"
+        case .tiltWarnings: return "警告"
+        case .tiltDangers: return "危险"
+        case .cooldownCompleted: return "冷静期完成"
+        case .baselineVPIP: return "基准"
+        case .deviationHands: return "偏离手牌"
+        case .deviationHandsDesc: return "超出正常范围入池"
+        case .weakHandEntries: return "弱牌入池"
+        case .weakHandEntriesDesc: return "弱牌主动入池"
 
         case .vsSession: return "vs 本场"
         case .vsLifetime: return "vs 生涯"
@@ -513,9 +794,9 @@ enum L10n {
         case .weakEntries: return "弱牌入池"
         case .weakEntriesCooling: return "冷静期内弱牌入池"
         case .sessionRating: return "本场纪律"
-        case .insightNormal: return "你的 VPIP 保持在常规范围内，本场纪律良好。"
-        case .insightTilted: return "逆风后范围扩大，注意未来牌局的上头模式。"
-        case .insightRecovered: return "本场中段检测到上头模式，但冷静期后打法趋于稳定。"
+        case .insightNormal: return "VPIP 在基线范围内，纪律稳定。"
+        case .insightTilted: return "逆风下范围扩大，复盘上头触发点。"
+        case .insightRecovered: return "中段检测到上头，冷静期后趋于稳定。"
         case .comparedToAvg: return "vs 平均"
 
         case .allSessions: return "所有牌局"
@@ -527,6 +808,7 @@ enum L10n {
         case .done: return "完成"
         case .save: return "保存"
         case .delete: return "删除"
+        case .optional: return "选填"
         case .win: return "赢"
         case .loss: return "输"
         case .sessionComplete: return "牌局结束"
@@ -535,25 +817,30 @@ enum L10n {
         case .action: return "行动"
         case .bbAmount: return "BB 数额"
 
-        // Tilt Coach
-        case .tiltVpipDriftDangerH: return "入池范围明显偏宽"
-        case .tiltVpipDriftDangerD: return "近期 VPIP 比基准高出 %d%%，检查每手牌是否符合你的标准。"
-        case .tiltVpipDriftWarnH: return "范围略宽于你的常规"
-        case .tiltVpipDriftWarnD: return "近期 VPIP 高于基准，注意你的手牌选择。"
-        case .tiltWinStreakH: return "连赢后范围扩大"
-        case .tiltWinStreakD: return "你打得顺风顺水，正开始玩常规范围外的牌。保持纪律。"
-        case .tiltWinMomentumH: return "势头可能正在扩大你的范围"
-        case .tiltWinMomentumD: return "近期连赢后 VPIP 比基准高 %d%%。锁住收益。"
-        case .tiltLossChaseH: return "追损中 — 大底池后 VPIP 飙升"
-        case .tiltLossChaseD: return "重大损失后入池率激增。建议休息 5 分钟。"
-        case .tiltLossRisingH: return "连输后 VPIP 上升"
-        case .tiltLossRisingD: return "逆风局后打法变松。下一手前先深呼吸。"
-        case .tiltStyleDepartH: return "明显偏离你的常规风格"
-        case .tiltStyleDepartD: return "%@ 等牌型不在你的常规范围内。暂停并重新集中注意力。"
-        case .tiltStylePatternH: return "部分手牌超出常规模式"
-        case .tiltStylePatternD: return "近期记录包含你通常不玩的牌型。确认是否有意为之。"
-        case .tiltStyleWidenedH: return "你的范围从开局起一直在扩大"
-        case .tiltStyleWidenedD: return "后半段 VPIP 明显高于前半段。考虑是否有意为之。"
+        // Tilt Coach — 4 categories
+        case .lossTiltH: return "输后上头"
+        case .lossTiltWarnD: return "连输后入池率上升，收紧范围。"
+        case .lossTiltDangerD: return "检测到明显上头，建议离桌 5 分钟。"
+        case .winTiltH: return "赢后膨胀"
+        case .winTiltD: return "连赢后范围扩大，锁住优势，别还回去。"
+        case .techTiltH: return "技术上头"
+        case .techTiltWarnD: return "范围偏离基线，重新审视选牌。"
+        case .techTiltDangerD: return "打法严重偏移，回归核心范围。"
+        case .bigPotH: return "大底池"
+        case .bigPotHugeH: return "超大底池"
+        case .bigPotMassiveH: return "极端大底池"
+        case .bigPotWinStrongD: return "大锅拿下。保持冷静，别让势头松了范围。"
+        case .bigPotWinStrongHugeD: return "超大底池拿下，先稳住节奏再继续。"
+        case .bigPotWinStrongMassiveD: return "极端大底池拿下，情绪波动可能很强，先观察几手。"
+        case .bigPotLossStrongD: return "打法正确，结果是波动。保持节奏。"
+        case .bigPotLossStrongHugeD: return "超大底池输了强牌，即使打法正确也会影响后续决策。"
+        case .bigPotLossStrongMassiveD: return "极端大底池输了，情绪冲击很强，收紧范围或暂停。"
+        case .bigPotWinWeakD: return "边缘牌侥幸获利，别让运气扩大你的范围。"
+        case .bigPotWinWeakHugeD: return "边缘牌赢了超大底池，容易误判自己的读牌。"
+        case .bigPotWinWeakMassiveD: return "边缘牌赢了极端大底池，最容易引发范围失控。"
+        case .bigPotLossWeakD: return "弱牌进大底池，立刻收紧范围。"
+        case .bigPotLossWeakHugeD: return "弱牌输了超大底池，明显偏离纪律，立刻重置。"
+        case .bigPotLossWeakMassiveD: return "弱牌输掉极端大底池，强烈建议暂停几手。"
         case .sessionBB: return "本场 %@BB"
         case .statsLocked: return "登录后查看统计数据"
         case .statsLockedDesc: return "登录后你的牌局数据将被分析"
@@ -563,16 +850,35 @@ enum L10n {
         case .gtoAdvice: return "GTO 翻前建议"
         case .gtoOpenRaise: return "开池"
         case .gtoNotInRange: return "—"
-        case .gtoAllPositions: return "任何位置都可以开池加注，强牌。"
-        case .gtoMidLate: return "中位以后可开池，前位弃牌。"
-        case .gtoLateOnly: return "仅 CO 及以后位置开池，前中位弃牌。"
-        case .gtoBtnOnly: return "边缘牌 — 仅 BTN 或 SB 可开池。"
-        case .gtoPremium: return "顶级牌 — 任何位置加注或 3-bet。"
-        case .gtoFoldPre: return "弱牌 — 翻前弃牌。"
+        case .gtoAllPositions: return "全位置可开池，权益手牌。"
+        case .gtoMidLate: return "中位+可开。前位弃牌。"
+        case .gtoLateOnly: return "CO+ 可开。前中位弃牌。"
+        case .gtoBtnOnly: return "BTN/SB 可开 — 边缘牌。"
+        case .gtoPremium: return "顶级牌。任意位置加注或 3-bet。"
+        case .gtoFoldPre: return "范围外 — 翻前弃牌。"
         case .positionGuide: return "位置指南"
         case .sixMax: return "6人桌"
         case .nineMax: return "9人桌"
         case .tapForGuide: return "点击查看位置指南"
+        case .gameModeCash: return "现金桌"
+        case .gameModeTournament: return "锦标赛"
+        case .gameModeLabel: return "游戏模式"
+        case .tableSizeLabel: return "桌型"
+        case .tableStyleLabel: return "牌桌风格"
+        case .tableSizeHU: return "单挑"
+        case .tableSizeSixMax: return "6人桌"
+        case .tableSizeNineMax: return "9人桌"
+        case .tableSizeFullRing: return "满桌"
+        case .tableStyleStandard: return "标准"
+        case .tableStyleLoose: return "松桌"
+        case .tableStyleFriendly: return "朋友局"
+        case .sessionTitleLabel: return "地点"
+        case .sessionTitlePlaceholder: return "百乐宫、朋友家..."
+        case .vpipOptionalHint: return "选填 — 提升上头检测准确性"
+        case .emotionSignalLabel: return "感觉（可选）"
+        case .emotionBadBeat: return "Bad Beat"
+        case .emotionCooler: return "Cooler"
+        case .emotionTilt: return "Tilt"
         case .posUtgDesc: return "枪口位 — 最先行动，范围最紧"
         case .posMpDesc: return "中间位 — 比 UTG 略宽"
         case .posCoDesc: return "关煞位 — 倒数第二，范围较宽"
@@ -592,15 +898,15 @@ enum L10n {
         case .strategyInsight: return ""
         case .targetVPIP: return "目标 VPIP"
         case .currentVPIP: return "当前 VPIP"
-        case .strategyTightDesc: return "保守打法，专注于优质手牌。适合强对手牌桌。"
-        case .strategyBalancedDesc: return "适用于 6-max 桌的平衡策略范围。"
-        case .strategyLooseDesc: return "激进打法，范围更宽。适合被动型牌桌。"
+        case .strategyTightDesc: return "仅打优质牌，适合强阵容。"
+        case .strategyBalancedDesc: return "标准 6-max 均衡范围。"
+        case .strategyLooseDesc: return "宽范围高侵略性，适合被动桌。"
 
         // Cooldown
         case .cooldownMode: return "冷静模式"
-        case .cooldownSuggestion: return "接下来 %d 手建议收紧范围"
-        case .cooldownRemaining: return "还剩 %d 手"
-        case .cooldownExtended: return "冷静期延长 — 仍在偏离"
+        case .cooldownSuggestion: return "接下来 %d 手收紧范围"
+        case .cooldownRemaining: return "剩余 %d 手"
+        case .cooldownExtended: return "延长 — 偏移仍在继续"
         case .cooldownObserving: return "观察中"
         case .cooldownObservingDesc: return "观察接下来 %d 手的行为"
         case .cooldownModeDesc: return "反复偏离后建议收紧范围"

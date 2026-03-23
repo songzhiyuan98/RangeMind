@@ -54,6 +54,16 @@ enum ActionType: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Emotion Signal
+
+enum EmotionSignal: String, CaseIterable, Identifiable {
+    case badBeat    // AA vs 72o river 2
+    case cooler     // KK vs AA, set over set
+    case tilt       // Player self-reports tilting
+
+    var id: String { rawValue }
+}
+
 @Model
 final class HandRecordData {
     var id: UUID
@@ -68,6 +78,9 @@ final class HandRecordData {
 
     // GTO deviation tracking
     var isGTODeviation: Bool?
+
+    // Emotion signal (optional self-report)
+    var emotionSignalRaw: String?
 
     // Pro 功能字段
     var bbResult: Double?
@@ -107,6 +120,16 @@ final class HandRecordData {
         }
     }
 
+    var emotionSignal: EmotionSignal? {
+        get {
+            guard let raw = emotionSignalRaw else { return nil }
+            return EmotionSignal(rawValue: raw)
+        }
+        set {
+            emotionSignalRaw = newValue?.rawValue
+        }
+    }
+
     var handType: String? {
         guard let c1 = card1Rank, let c2 = card2Rank else { return nil }
 
@@ -134,6 +157,7 @@ final class HandRecordData {
         isSuited: Bool? = nil,
         result: HandResult? = nil,
         isGTODeviation: Bool? = nil,
+        emotionSignal: EmotionSignal? = nil,
         bbResult: Double? = nil,
         position: PokerPosition? = nil,
         actionType: ActionType? = nil,
@@ -147,6 +171,7 @@ final class HandRecordData {
         self.isSuited = isSuited
         self.resultRaw = result?.rawValue
         self.isGTODeviation = isGTODeviation
+        self.emotionSignalRaw = emotionSignal?.rawValue
         self.bbResult = bbResult
         self.positionRaw = position?.rawValue
         self.actionTypeRaw = actionType?.rawValue

@@ -10,80 +10,27 @@ struct StatsView: View {
     var body: some View {
         NavigationStack {
             if dataService.isGuestMode {
-                // Guest locked state
-                VStack(spacing: 20) {
-                    Spacer()
-
-                    Image(systemName: "chart.bar.xaxis")
-                        .font(.system(size: 48, weight: .ultraLight))
-                        .foregroundColor(.vtDim)
-
-                    Text(L10n.s(.statsLocked, lang))
-                        .font(.system(size: 14, design: .monospaced))
-                        .foregroundColor(.vtMuted)
-
-                    Text(L10n.s(.statsLockedDesc, lang))
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundColor(.vtDim)
-
-                    Button {
-                        // TODO: Sign in with Apple
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "apple.logo")
-                                .font(.system(size: 14))
-                            Text(L10n.s(.signInWithApple, lang))
-                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                                .tracking(1)
-                        }
-                        .foregroundColor(.vtBlack)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
-                        .background(Color.vtText, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    }
-                    .buttonStyle(ScaleButtonStyle())
-                    .padding(.horizontal, 40)
-
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.vtBlack.ignoresSafeArea())
+                guestLockedView
             } else if dataService.lifetimeHands < 10 {
-                // Not enough data
-                VStack(spacing: 20) {
-                    Spacer()
-
-                    Image(systemName: "chart.bar.xaxis")
-                        .font(.system(size: 48, weight: .ultraLight))
-                        .foregroundColor(.vtDim)
-
-                    Text(L10n.s(.noDataYet, lang))
-                        .font(.system(size: 14, design: .monospaced))
-                        .foregroundColor(.vtMuted)
-
-                    Text(L10n.s(.playMoreHands, lang))
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundColor(.vtDim)
-
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.vtBlack.ignoresSafeArea())
+                notEnoughDataView
             } else {
                 ScrollView {
-                    VStack(spacing: 24) {
-                        // Header
-                        statsHeader
+                    VStack(spacing: 0) {
+                        // 1. Today Session Summary
+                        todaySection
                             .padding(.top, 20)
+                            .padding(.bottom, 28)
 
-                        // BB Stats
-                        bbSection
+                        // 2. Tilt Analysis
+                        tiltSection
+                            .padding(.bottom, 28)
 
-                        // GTO Compliance
-                        gtoComplianceSection
+                        // 3. Play Style
+                        playStyleSection
+                            .padding(.bottom, 28)
 
-                        // Tilt Analysis
-                        tiltAnalysisSection
+                        // 4. History Trend (lifetime overview)
+                        historySection
 
                         Spacer().frame(height: 100)
                     }
@@ -95,281 +42,363 @@ struct StatsView: View {
         }
     }
 
-    // MARK: - Header
+    // MARK: - Guest Locked
 
-    private var statsHeader: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(L10n.s(.statistics, lang))
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
+    private var guestLockedView: some View {
+        VStack(spacing: 12) {
+            Spacer()
+
+            Text(L10n.s(.statsLocked, lang))
+                .font(.system(size: 14, design: .monospaced))
+                .foregroundColor(.vtMuted)
+
+            Text(L10n.s(.statsLockedDesc, lang))
+                .font(.system(size: 12, design: .monospaced))
                 .foregroundColor(.vtDim)
-                .tracking(3)
-                .padding(.horizontal, 20)
 
-            if dataService.lifetimeHands >= 100 {
-                let playerType = PlayerType.from(vpip: dataService.lifetimeVPIP)
-
+            Button {
+                dataService.signInWithApple()
+            } label: {
                 HStack(spacing: 8) {
-                    Circle()
-                        .fill(playerType.color)
-                        .frame(width: 5, height: 5)
-
-                    Text("\(playerType.rawValue) · \(dataService.lifetimeVPIP)% · \(dataService.lifetimeHands) \(L10n.s(.handsCount, lang))")
-                        .font(.system(size: 13, design: .monospaced))
-                        .foregroundColor(.vtMuted)
+                    Image(systemName: "apple.logo")
+                        .font(.system(size: 14))
+                    Text(L10n.s(.signInWithApple, lang))
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .tracking(1)
                 }
-                .padding(.horizontal, 20)
-
-                Text(playerType.description)
-                    .font(.system(size: 12))
-                    .foregroundColor(.vtDim)
-                    .padding(.horizontal, 20)
-            } else {
-                HStack(spacing: 8) {
-                    Text("\(dataService.lifetimeVPIP)% · \(dataService.lifetimeHands) \(L10n.s(.handsCount, lang))")
-                        .font(.system(size: 13, design: .monospaced))
-                        .foregroundColor(.vtMuted)
-                }
-                .padding(.horizontal, 20)
-
-                Text(L10n.s(.playerProfileUnlocks, lang))
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(.vtDim)
-                    .padding(.horizontal, 20)
+                .foregroundColor(.vtBlack)
+                .frame(maxWidth: .infinity)
+                .frame(height: 48)
+                .background(Color.vtText, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
+            .buttonStyle(ScaleButtonStyle())
+            .padding(.horizontal, 40)
+            .padding(.top, 8)
+
+            Spacer()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.vtBlack.ignoresSafeArea())
     }
 
-    // MARK: - BB Stats
+    // MARK: - Not Enough Data
 
-    private var bbSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionLabel(L10n.s(.bbStats, lang))
+    private var notEnoughDataView: some View {
+        VStack(spacing: 12) {
+            Spacer()
 
+            Text(L10n.s(.noDataYet, lang))
+                .font(.system(size: 14, design: .monospaced))
+                .foregroundColor(.vtMuted)
+
+            Text(L10n.s(.playMoreHands, lang))
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(.vtDim)
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.vtBlack.ignoresSafeArea())
+    }
+
+    // MARK: - 1. Today Session Summary
+
+    private var todaySection: some View {
+        let today = dataService.getTodayStats()
+
+        return VStack(spacing: 0) {
+            // Hero: discipline score or hand count
+            VStack(spacing: 8) {
+                if let score = today.disciplineScore {
+                    HStack(alignment: .firstTextBaseline, spacing: 0) {
+                        Text("\(score)")
+                            .font(.system(size: 96, weight: .ultraLight, design: .monospaced))
+                            .foregroundColor(disciplineColor(score))
+
+                        Text("/100")
+                            .font(.system(size: 24, weight: .ultraLight, design: .monospaced))
+                            .foregroundColor(.vtDim)
+                    }
+
+                    Text(L10n.s(.disciplineScore, lang).uppercased())
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundColor(.vtDim)
+                        .tracking(2)
+                } else {
+                    Text("\(today.totalHands)")
+                        .font(.system(size: 96, weight: .ultraLight, design: .monospaced))
+                        .foregroundColor(.vtText)
+
+                    Text(L10n.s(.todayPerformance, lang).uppercased())
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundColor(.vtDim)
+                        .tracking(2)
+                }
+            }
+            .padding(.bottom, 28)
+
+            // Quick stats
             HStack(spacing: 0) {
-                VStack(spacing: 4) {
-                    Text(String(format: "%+.1f", dataService.totalBBResult))
-                        .font(.system(size: 28, weight: .light, design: .monospaced))
-                        .monospacedDigit()
-                        .foregroundColor(dataService.totalBBResult >= 0 ? .vtAccent : .vtRed)
+                statCell("\(today.totalHands)", L10n.s(.hands, lang))
+                statCell("\(today.vpip)%", "VPIP")
 
-                    Text(L10n.s(.totalBB, lang))
-                        .font(.system(size: 9, weight: .medium, design: .monospaced))
-                        .foregroundColor(.vtDim)
-                        .tracking(1)
+                if let bb = today.bbResult {
+                    statCell(
+                        String(format: "%+.0f", bb),
+                        "BB"
+                    )
                 }
-                .frame(maxWidth: .infinity)
-
-                Rectangle()
-                    .fill(Color.vtBorder)
-                    .frame(width: 1, height: 40)
-
-                VStack(spacing: 4) {
-                    Text(String(format: "%+.1f", dataService.bb100))
-                        .font(.system(size: 28, weight: .light, design: .monospaced))
-                        .monospacedDigit()
-                        .foregroundColor(dataService.bb100 >= 0 ? .vtAccent : .vtRed)
-
-                    Text(L10n.s(.bb100, lang))
-                        .font(.system(size: 9, weight: .medium, design: .monospaced))
-                        .foregroundColor(.vtDim)
-                        .tracking(1)
-                }
-                .frame(maxWidth: .infinity)
             }
-            .padding(.vertical, 20)
-            .background(Color.vtSurface)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(Color.vtBorder, lineWidth: 1)
-            )
             .padding(.horizontal, 20)
+            .padding(.bottom, 28)
+
+            // Detail rows
+            sectionLabel(L10n.s(.todayPerformance, lang))
+                .padding(.bottom, 12)
+
+            VStack(spacing: 0) {
+                detailRow(L10n.s(.hands, lang), "\(today.totalHands)")
+                rowDivider
+                detailRow("VPIP", "\(today.vpip)%")
+
+                if let bb = today.bbResult {
+                    rowDivider
+                    detailRow(
+                        L10n.s(.netResult, lang),
+                        String(format: "%+.1f BB", bb),
+                        color: bb >= 0 ? .vtText : .vtRed
+                    )
+                }
+
+                if let score = today.disciplineScore {
+                    rowDivider
+                    detailRow(
+                        L10n.s(.disciplineScore, lang),
+                        "\(score)/100",
+                        color: disciplineColor(score)
+                    )
+                }
+            }
+            .padding(.horizontal, 32)
         }
     }
 
-    // MARK: - GTO Compliance
+    // MARK: - 2. Tilt Analysis
 
-    private var gtoComplianceSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionLabel(L10n.s(.gtoCompliance, lang))
+    private var tiltSection: some View {
+        let today = dataService.getTodayStats()
+        let analysis = dataService.getTiltAnalysis()
 
-            let stats = dataService.getGTOComplianceStats()
-
-            VStack(spacing: 14) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(alignment: .firstTextBaseline, spacing: 0) {
-                            Text("\(stats.complianceRate)")
-                                .font(.system(size: 40, weight: .ultraLight, design: .monospaced))
-                                .foregroundColor(stats.isGood ? .vtAccent : stats.complianceRate >= 60 ? .vtAmber : .vtRed)
-
-                            Text("%")
-                                .font(.system(size: 16, weight: .ultraLight, design: .monospaced))
-                                .foregroundColor(.vtDim)
-                        }
-
-                        Text(L10n.s(.inRange, lang))
-                            .font(.system(size: 9, weight: .medium, design: .monospaced))
-                            .foregroundColor(.vtDim)
-                            .tracking(1)
-                    }
-
-                    Spacer()
-
-                    VStack(alignment: .trailing, spacing: 6) {
-                        HStack(spacing: 4) {
-                            Text("\(stats.inRangeCount)")
-                                .font(.system(size: 14, weight: .medium, design: .monospaced))
-                                .foregroundColor(.vtAccent)
-                            Text(L10n.s(.std, lang))
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(.vtDim)
-                        }
-
-                        HStack(spacing: 4) {
-                            Text("\(stats.outOfRangeCount)")
-                                .font(.system(size: 14, weight: .medium, design: .monospaced))
-                                .foregroundColor(.vtAmber)
-                            Text(L10n.s(.dev, lang))
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(.vtDim)
-                        }
-                    }
-                }
-
-                if !stats.topDeviations.isEmpty {
-                    Rectangle()
-                        .fill(Color.vtBorder)
-                        .frame(height: 0.5)
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(L10n.s(.common_deviations, lang))
-                            .font(.system(size: 9, weight: .medium, design: .monospaced))
-                            .foregroundColor(.vtDim)
-                            .tracking(1)
-
-                        HStack(spacing: 6) {
-                            ForEach(stats.topDeviations, id: \.self) { hand in
-                                Text(hand)
-                                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                                    .foregroundColor(.vtAmber)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color.vtAmber.opacity(0.1))
-                                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                            }
-                            Spacer()
-                        }
-                    }
-                }
-
-                if !stats.isGood && stats.totalAnalyzed >= 10 {
-                    HStack(spacing: 6) {
-                        Text("→")
-                            .foregroundColor(.vtAmber)
-                        Text(L10n.s(.tightenRange, lang))
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(.vtMuted)
-                        Spacer()
-                    }
-                }
-            }
-            .padding(16)
-            .background(Color.vtSurface)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(Color.vtBorder, lineWidth: 1)
-            )
-            .padding(.horizontal, 20)
-        }
-    }
-
-    // MARK: - Tilt Analysis
-
-    private var tiltAnalysisSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: 12) {
             sectionLabel(L10n.s(.tiltAnalysis, lang))
 
-            let analysis = dataService.getTiltAnalysis()
+            VStack(spacing: 0) {
+                // Today's tilt events
+                detailRow(L10n.s(.tiltWarnings, lang), "\(today.tiltWarnings)")
+                rowDivider
+                detailRow(
+                    L10n.s(.tiltDangers, lang),
+                    "\(today.tiltDangers)",
+                    color: today.tiltDangers > 0 ? .vtRed : .vtMuted
+                )
+                rowDivider
+                detailRow(L10n.s(.cooldownCompleted, lang), "\(today.cooldownCount)")
 
-            VStack(spacing: 14) {
-                HStack(spacing: 0) {
-                    VStack(spacing: 3) {
-                        Text("\(analysis.tiltSessions)/\(analysis.totalSessions)")
-                            .font(.system(size: 20, weight: .light, design: .monospaced))
-                            .foregroundColor(tiltColor(analysis.tiltRate))
-
-                        Text(L10n.s(.sessions, lang))
-                            .font(.system(size: 9, weight: .medium, design: .monospaced))
-                            .foregroundColor(.vtDim)
-                            .tracking(1)
-                    }
-                    .frame(maxWidth: .infinity)
-
-                    Rectangle()
-                        .fill(Color.vtBorder)
-                        .frame(width: 1, height: 32)
-
-                    VStack(spacing: 3) {
-                        Text("\(analysis.tiltRate)%")
-                            .font(.system(size: 20, weight: .light, design: .monospaced))
-                            .foregroundColor(tiltColor(analysis.tiltRate))
-
-                        Text(L10n.s(.rate, lang))
-                            .font(.system(size: 9, weight: .medium, design: .monospaced))
-                            .foregroundColor(.vtDim)
-                            .tracking(1)
-                    }
-                    .frame(maxWidth: .infinity)
+                // Lifetime tilt stats
+                if analysis.totalSessions >= 3 {
+                    rowDivider
 
                     Rectangle()
-                        .fill(Color.vtBorder)
-                        .frame(width: 1, height: 32)
+                        .fill(Color.clear)
+                        .frame(height: 12)
 
-                    VStack(spacing: 3) {
-                        Text("\(analysis.avgTiltDuration)m")
-                            .font(.system(size: 20, weight: .light, design: .monospaced))
-                            .foregroundColor(.vtText)
+                    sectionLabel(L10n.s(.tiltAnalysis, lang) + " · " + L10n.s(.lifetime, lang))
+                        .padding(.bottom, 4)
+                        .padding(.horizontal, -32)
 
-                        Text(L10n.s(.avgDur, lang))
-                            .font(.system(size: 9, weight: .medium, design: .monospaced))
-                            .foregroundColor(.vtDim)
-                            .tracking(1)
+                    detailRow(
+                        L10n.s(.sessions, lang),
+                        "\(analysis.tiltSessions)/\(analysis.totalSessions)",
+                        color: tiltColor(analysis.tiltRate)
+                    )
+                    rowDivider
+                    detailRow(
+                        L10n.s(.rate, lang),
+                        "\(analysis.tiltRate)%",
+                        color: tiltColor(analysis.tiltRate)
+                    )
+                    rowDivider
+                    detailRow(L10n.s(.avgDur, lang), "\(analysis.avgTiltDuration)m")
+
+                    if analysis.tiltRate > 20 {
+                        rowDivider
+                        HStack {
+                            Text(L10n.s(.highTiltFrequency, lang))
+                                .font(.system(size: 13))
+                                .foregroundColor(.vtAmber)
+                            Spacer()
+                        }
+                        .padding(.vertical, 14)
                     }
-                    .frame(maxWidth: .infinity)
-                }
-
-                if analysis.tiltRate > 20 {
-                    Text("→ \(L10n.s(.highTiltFrequency, lang))")
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundColor(.vtAmber)
                 }
             }
-            .padding(16)
-            .background(Color.vtSurface)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(Color.vtBorder, lineWidth: 1)
-            )
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 32)
         }
     }
 
-    private func tiltColor(_ rate: Int) -> Color {
-        rate > 30 ? .vtRed : rate > 15 ? .vtAmber : .vtAccent
+    // MARK: - 3. Play Style
+
+    private var playStyleSection: some View {
+        let today = dataService.getTodayStats()
+
+        return VStack(alignment: .leading, spacing: 12) {
+            sectionLabel(L10n.s(.playStyle, lang))
+
+            VStack(spacing: 0) {
+                // VPIP vs baseline
+                detailRow("VPIP", "\(today.vpip)%")
+                rowDivider
+                detailRow(L10n.s(.baselineVPIP, lang), "\(dataService.lifetimeVPIP)%")
+
+                let vpipDiff = today.totalHands >= 10 ? today.vpip - dataService.lifetimeVPIP : 0
+                if vpipDiff != 0 {
+                    rowDivider
+                    detailRow(
+                        L10n.s(.vpipDeviation, lang),
+                        vpipDiff > 0 ? "+\(vpipDiff)%" : "\(vpipDiff)%",
+                        color: abs(vpipDiff) > 5 ? .vtAmber : .vtMuted
+                    )
+                }
+
+                // Deviation hands
+                rowDivider
+                detailRow(
+                    L10n.s(.deviationHands, lang),
+                    "\(today.deviationCount)",
+                    color: today.deviationCount > 3 ? .vtAmber : .vtMuted
+                )
+
+                // Weak entries
+                rowDivider
+                detailRow(
+                    L10n.s(.weakHandEntries, lang),
+                    "\(today.weakEntryCount)",
+                    color: today.weakEntryCount > 2 ? .vtRed : .vtMuted
+                )
+            }
+            .padding(.horizontal, 32)
+        }
+    }
+
+    // MARK: - 4. History / Lifetime
+
+    private var historySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionLabel(L10n.s(.statistics, lang))
+
+            VStack(spacing: 0) {
+                detailRow(L10n.s(.hands, lang), "\(dataService.lifetimeHands)")
+                rowDivider
+                detailRow(L10n.s(.sessions, lang), "\(dataService.recentSessions.count)")
+                rowDivider
+                detailRow("VPIP", "\(dataService.lifetimeVPIP)%")
+
+                if dataService.lifetimeHands >= 100 {
+                    let playerType = PlayerType.from(vpip: dataService.lifetimeVPIP)
+                    rowDivider
+                    HStack {
+                        Text(playerType.rawValue)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(.vtText)
+
+                        Spacer()
+
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(playerType.color)
+                                .frame(width: 5, height: 5)
+                            Text(playerType.description)
+                                .font(.system(size: 13))
+                                .foregroundColor(.vtDim)
+                        }
+                    }
+                    .padding(.vertical, 14)
+                }
+
+                if dataService.totalBBResult != 0 {
+                    rowDivider
+                    detailRow(
+                        L10n.s(.totalBB, lang),
+                        String(format: "%+.1f", dataService.totalBBResult),
+                        color: dataService.totalBBResult >= 0 ? .vtText : .vtRed
+                    )
+                }
+
+                if dataService.lifetimeHands >= 100 {
+                    rowDivider
+                    detailRow(
+                        L10n.s(.bb100, lang),
+                        String(format: "%+.1f", dataService.bb100),
+                        color: dataService.bb100 >= 0 ? .vtText : .vtRed
+                    )
+                }
+            }
+            .padding(.horizontal, 32)
+        }
     }
 
     // MARK: - Helpers
 
+    private func disciplineColor(_ score: Int) -> Color {
+        score >= 80 ? .vtText : score >= 60 ? .vtAmber : .vtRed
+    }
+
+    private func tiltColor(_ rate: Int) -> Color {
+        rate > 30 ? .vtRed : rate > 15 ? .vtAmber : .vtText
+    }
+
     private func sectionLabel(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 10, weight: .medium, design: .monospaced))
+            .font(.system(size: 11, weight: .medium, design: .monospaced))
             .foregroundColor(.vtDim)
             .tracking(2)
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 32)
+    }
+
+    private func statCell(_ value: String, _ label: String) -> some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(.system(size: 22, weight: .medium, design: .monospaced))
+                .monospacedDigit()
+                .foregroundColor(.vtText)
+
+            Text(label)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundColor(.vtDim)
+                .tracking(1)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func detailRow(_ title: String, _ value: String, color: Color = .vtMuted) -> some View {
+        HStack {
+            Text(title)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundColor(.vtText)
+
+            Spacer()
+
+            Text(value)
+                .font(.system(size: 15, weight: .medium, design: .monospaced))
+                .foregroundColor(color)
+        }
+        .padding(.vertical, 14)
+    }
+
+    private var rowDivider: some View {
+        Rectangle()
+            .fill(Color.vtBorder)
+            .frame(height: 0.5)
     }
 }
 
