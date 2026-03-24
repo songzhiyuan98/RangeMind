@@ -79,6 +79,12 @@ extension Color {
             : UIColor(r: 0xD9, g: 0x77, b: 0x06)
     })
 
+    static let vtTeal = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(r: 0x2D, g: 0xD4, b: 0xBF)
+            : UIColor(r: 0x0D, g: 0x94, b: 0x88)
+    })
+
     // MARK: - Liquid Glass
     static let lgGlow = Color(UIColor { traits in
         traits.userInterfaceStyle == .dark

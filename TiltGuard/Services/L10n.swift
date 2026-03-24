@@ -17,6 +17,8 @@ enum L10n {
         case sessionVPIP, thirtyMinVPIP, lifetime
         case entries, fold, vpip
         case noActiveSession, startFromHome
+        case liveEmptyTitle, liveEmptyBody
+        case liveFeature1, liveFeature2, liveFeature3
 
         // Stats
         case statistics, bbStats, totalBB, bb100
@@ -148,6 +150,30 @@ enum L10n {
         case statsLocked, statsLockedDesc
         case playMoreHands
 
+        // V6: Watch & Recovering phase messages
+        case watchLossTiltD, watchTechTiltD
+        case watchCorrectionH, watchCorrectionD
+        case tiltCorrectionH, tiltCorrectionD
+        case recoveringH, recoveringD
+        case recoveringCorrectionH, recoveringCorrectionD
+        case watchFoldH, watchFoldD
+        case tiltFoldH, tiltFoldD
+        case recoveringFoldH, recoveringFoldD
+        case normalReturnH, normalReturnD
+
+        // V6: Emotion signal strength labels
+        case emotionMildSignal, emotionModerateSignal, emotionStrongSignal
+
+        // V6: Emotion confirmation dialogs
+        case emotionConfirmCancel, emotionConfirmOK
+        case badBeatConfirmTitle, badBeatConfirmBody
+        case coolerConfirmTitle, coolerConfirmBody
+        case tiltConfirmTitle, tiltConfirmBody
+
+        // V6: Emotion hint & undo
+        case emotionHint
+        case emotionUndoLabel, emotionUndoMessage
+
         // GTO Advice
         case gtoAdvice, gtoOpenRaise, gtoNotInRange
         case gtoAllPositions, gtoMidLate, gtoLateOnly, gtoBtnOnly
@@ -239,6 +265,11 @@ enum L10n {
         case .vpip: return "VPIP"
         case .noActiveSession: return "No active session"
         case .startFromHome: return "Start from the home tab"
+        case .liveEmptyTitle: return "Your Session Hub"
+        case .liveEmptyBody: return "Start a session to track your VPIP,\ndetect tilt patterns, and get real-time coaching."
+        case .liveFeature1: return "Real-time VPIP tracking"
+        case .liveFeature2: return "4-state tilt detection"
+        case .liveFeature3: return "Positive feedback coaching"
 
         case .statistics: return "STATISTICS"
         case .bbStats: return "BB STATS"
@@ -339,18 +370,18 @@ enum L10n {
         case .alertCategories: return "ALERT CATEGORIES"
 
         // Onboarding
-        case .welcomeTitle: return "Welcome to TiltGuard"
-        case .welcomeSubtitle: return "Stay disciplined at the poker table.\nTrack your play and detect tilt before it costs you."
-        case .welcomeFeature1: return "Live VPIP tracking"
-        case .welcomeFeature2: return "Intelligent tilt detection"
-        case .welcomeFeature3: return "Player profile & insights"
+        case .welcomeTitle: return "TiltGuard"
+        case .welcomeSubtitle: return "Your poker discipline shield.\nDetect tilt before it costs you."
+        case .welcomeFeature1: return "Real-time VPIP tracking"
+        case .welcomeFeature2: return "5-detector tilt detection"
+        case .welcomeFeature3: return "Positive feedback coaching"
         case .continueAsGuest: return "Continue as Guest"
         case .onboardingSkip: return "Skip"
         case .onboardingContinue: return "Continue"
-        case .onboardingDetectTitle: return "Real-time Tilt Detection"
-        case .onboardingDetectBody: return "The app monitors your play and alerts you when your decisions start drifting from your normal strategy."
-        case .onboardingDisciplineTitle: return "Protect Your Edge"
-        case .onboardingDisciplineBody: return "Eliminate emotional leaks.\nStabilize your strategy.\nDefend your bankroll."
+        case .onboardingDetectTitle: return "Catch Tilt in Real Time"
+        case .onboardingDetectBody: return "5 independent detectors monitor loss-chasing, style drift, big pots, win tilt, and VPIP drift — so you know the moment your game starts slipping."
+        case .onboardingDisciplineTitle: return "Protect Your Bankroll"
+        case .onboardingDisciplineBody: return "4-state system tracks your mental state from Normal to Tilt. Positive feedback rewards disciplined decisions — not just results."
         case .onboardingProTitle: return "TiltGuard Pro"
         case .onboardingProBody: return "Advanced behavioral analysis\nand deep session insights."
         case .onboardingProFeature1: return "5 detectors with custom priority"
@@ -363,8 +394,8 @@ enum L10n {
         case .onboardingProTrial: return "Start Free Trial"
         case .onboardingProFree: return "Continue with Free Version"
         case .onboardingProEarly: return "Early Supporter Price"
-        case .onboardingSignInTitle: return "Get Started"
-        case .onboardingSignInBody: return "Sign in to keep your stats across sessions.\nGuest mode stores data only on this device."
+        case .onboardingSignInTitle: return "Ready to Play Smarter?"
+        case .onboardingSignInBody: return "Sign in to build your player profile over time.\nOr start as guest — full features, no sign-up."
 
         case .guestSession: return "Guest Session"
         case .guestDataNotSaved: return "Data will not be saved"
@@ -493,6 +524,46 @@ enum L10n {
         case .statsLockedDesc: return "Your playing data will be analyzed after signing in"
         case .playMoreHands: return "Play more hands to see statistics"
 
+        // V6: Watch & Recovering
+        case .watchLossTiltD: return "VPIP elevated post-loss. Watch your next few hands."
+        case .watchTechTiltD: return "Range starting to drift. Stay alert."
+        case .watchCorrectionH: return "Good Correction"
+        case .watchCorrectionD: return "Still elevated, but this hand was disciplined. Keep it up."
+        case .tiltCorrectionH: return "Disciplined Decision"
+        case .tiltCorrectionD: return "Risk is high, but this was the right play. One hand at a time."
+        case .recoveringH: return "Recovering"
+        case .recoveringD: return "Recovery in progress · Stay disciplined"
+        case .recoveringCorrectionH: return "Recovery in Progress"
+        case .recoveringCorrectionD: return "Stay inside range."
+        case .watchFoldH: return "Good Fold"
+        case .watchFoldD: return "Nice reset."
+        case .tiltFoldH: return "Disciplined Fold"
+        case .tiltFoldD: return "Stabilizing."
+        case .recoveringFoldH: return "Recovery Building"
+        case .recoveringFoldD: return "Keep it up."
+        case .normalReturnH: return "Back on Track"
+        case .normalReturnD: return "Stay disciplined."
+
+        // V6: Emotion signal strength
+        case .emotionMildSignal: return "mild signal"
+        case .emotionModerateSignal: return "moderate signal"
+        case .emotionStrongSignal: return "strong signal"
+
+        // V6: Emotion confirmation
+        case .emotionConfirmCancel: return "Cancel"
+        case .emotionConfirmOK: return "Confirm"
+        case .badBeatConfirmTitle: return "Bad Beat?"
+        case .badBeatConfirmBody: return "You lost with a strong hand due to an unlucky runout. This mildly raises tilt detection sensitivity."
+        case .coolerConfirmTitle: return "Cooler?"
+        case .coolerConfirmBody: return "You ran into a stronger hand that was nearly impossible to fold. This moderately raises tilt detection sensitivity."
+        case .tiltConfirmTitle: return "Confirm Tilt?"
+        case .tiltConfirmBody: return "You recognize that you're playing emotionally — not due to bad luck, but because your decisions are off. This strongly raises tilt detection sensitivity."
+
+        // V6: Emotion hint & undo
+        case .emotionHint: return "Only select when you're aware of the cause"
+        case .emotionUndoLabel: return "Undo"
+        case .emotionUndoMessage: return "Emotion signal removed"
+
         // GTO Advice
         case .gtoAdvice: return "GTO PREFLOP"
         case .gtoOpenRaise: return "OPEN"
@@ -592,6 +663,11 @@ enum L10n {
         case .vpip: return "入池"
         case .noActiveSession: return "暂无进行中的牌局"
         case .startFromHome: return "从首页开始新牌局"
+        case .liveEmptyTitle: return "牌局控制台"
+        case .liveEmptyBody: return "开始牌局以追踪 VPIP，\n检测上头模式，获取实时反馈。"
+        case .liveFeature1: return "实时 VPIP 追踪"
+        case .liveFeature2: return "4 状态上头检测"
+        case .liveFeature3: return "正向反馈教练系统"
 
         case .statistics: return "数据统计"
         case .bbStats: return "BB 数据"
@@ -692,18 +768,18 @@ enum L10n {
         case .alertCategories: return "提醒类型"
 
         // Welcome
-        case .welcomeTitle: return "欢迎使用 TiltGuard"
-        case .welcomeSubtitle: return "在牌桌上保持纪律。\n追踪你的打法，在上头前及时发现。"
+        case .welcomeTitle: return "TiltGuard"
+        case .welcomeSubtitle: return "你的扑克纪律护盾。\n在上头造成损失前及时发现。"
         case .welcomeFeature1: return "实时 VPIP 追踪"
-        case .welcomeFeature2: return "智能上头检测"
-        case .welcomeFeature3: return "玩家画像与洞察"
+        case .welcomeFeature2: return "5 大上头检测器"
+        case .welcomeFeature3: return "正向反馈教练系统"
         case .continueAsGuest: return "以游客身份继续"
         case .onboardingSkip: return "跳过"
         case .onboardingContinue: return "继续"
-        case .onboardingDetectTitle: return "实时上头检测"
-        case .onboardingDetectBody: return "实时监控你的打法，当你的决策开始偏离正常策略时发出警报。"
-        case .onboardingDisciplineTitle: return "守住你的优势"
-        case .onboardingDisciplineBody: return "消除情绪漏洞。\n稳定你的策略。\n保护你的资金。"
+        case .onboardingDetectTitle: return "实时捕捉上头"
+        case .onboardingDetectBody: return "5 个独立检测器监控追损、风格偏移、大底池、顺风膨胀和入池漂移 — 第一时间发现你的打法偏离。"
+        case .onboardingDisciplineTitle: return "保护你的资金"
+        case .onboardingDisciplineBody: return "4 状态系统追踪你的心理状态，从 Normal 到 Tilt。正向反馈奖励正确决策 — 而非结果。"
         case .onboardingProTitle: return "TiltGuard Pro"
         case .onboardingProBody: return "高级行为分析\n与深度牌局洞察。"
         case .onboardingProFeature1: return "5 大检测器 + 自定义优先级"
@@ -716,8 +792,8 @@ enum L10n {
         case .onboardingProTrial: return "开始免费试用"
         case .onboardingProFree: return "继续使用免费版"
         case .onboardingProEarly: return "早期支持者价格"
-        case .onboardingSignInTitle: return "开始使用"
-        case .onboardingSignInBody: return "登录以保留你的统计数据。\n游客模式仅在本设备存储数据。"
+        case .onboardingSignInTitle: return "准备好更聪明地打牌了吗？"
+        case .onboardingSignInBody: return "登录以持续建立你的玩家档案。\n或直接游客模式 — 全部功能，无需注册。"
 
         case .guestSession: return "游客牌局"
         case .guestDataNotSaved: return "数据不会被保存"
@@ -845,6 +921,46 @@ enum L10n {
         case .statsLocked: return "登录后查看统计数据"
         case .statsLockedDesc: return "登录后你的牌局数据将被分析"
         case .playMoreHands: return "多打几手查看统计"
+
+        // V6: Watch & Recovering
+        case .watchLossTiltD: return "连输后入池率上升，注意接下来几手。"
+        case .watchTechTiltD: return "范围开始偏移，保持警觉。"
+        case .watchCorrectionH: return "正向修正"
+        case .watchCorrectionD: return "风险仍高，但这一手是正确修正，继续保持。"
+        case .tiltCorrectionH: return "纪律决策"
+        case .tiltCorrectionD: return "风险仍然很高，但这手打得对。一手一手来。"
+        case .recoveringH: return "恢复中"
+        case .recoveringD: return "恢复观察中 · 保持纪律"
+        case .recoveringCorrectionH: return "恢复进行中"
+        case .recoveringCorrectionD: return "继续按范围打。"
+        case .watchFoldH: return "好弃牌"
+        case .watchFoldD: return "这一手收住了。"
+        case .tiltFoldH: return "纪律弃牌"
+        case .tiltFoldD: return "先稳住。"
+        case .recoveringFoldH: return "恢复进行中"
+        case .recoveringFoldD: return "继续保持。"
+        case .normalReturnH: return "回到正轨"
+        case .normalReturnD: return "保持纪律。"
+
+        // V6: Emotion signal strength
+        case .emotionMildSignal: return "轻度信号"
+        case .emotionModerateSignal: return "中度信号"
+        case .emotionStrongSignal: return "强信号"
+
+        // V6: Emotion confirmation
+        case .emotionConfirmCancel: return "取消"
+        case .emotionConfirmOK: return "确认"
+        case .badBeatConfirmTitle: return "Bad Beat？"
+        case .badBeatConfirmBody: return "你用强牌输给了运气不好的发牌，这会轻度提高上头检测灵敏度。"
+        case .coolerConfirmTitle: return "Cooler？"
+        case .coolerConfirmBody: return "你遇到了几乎无法弃牌的更强手牌，这会中度提高上头检测灵敏度。"
+        case .tiltConfirmTitle: return "确认自己在上头？"
+        case .tiltConfirmBody: return "你意识到自己在情绪化打牌，不是因为运气差，而是决策已经变形。这会显著提高上头检测灵敏度。"
+
+        // V6: Emotion hint & undo
+        case .emotionHint: return "仅在明确意识到原因时选择"
+        case .emotionUndoLabel: return "撤销"
+        case .emotionUndoMessage: return "已移除情绪信号"
 
         // GTO Advice
         case .gtoAdvice: return "GTO 翻前建议"

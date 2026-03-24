@@ -56,6 +56,8 @@ struct TiltCoachMessage {
     enum MessageType {
         case warning
         case danger
+        case watch
+        case recovering
     }
 
     let type: MessageType

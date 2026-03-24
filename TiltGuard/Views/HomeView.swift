@@ -218,7 +218,7 @@ struct HomeView: View {
                     Circle()
                         .fill(playerType.color)
                         .frame(width: 5, height: 5)
-                    Text(playerType.rawValue)
+                    Text(playerType.displayName(lang))
                         .font(.system(size: 11, weight: .medium, design: .monospaced))
                         .foregroundColor(.vtDim)
                 }
@@ -339,24 +339,12 @@ struct HomeView: View {
     private var recentSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             if !dataService.recentSessions.isEmpty {
-                HStack {
-                    Text(L10n.s(.recent, lang))
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .foregroundColor(.vtDim)
-                        .tracking(2)
-
-                    Spacer()
-
-                    NavigationLink {
-                        AllSessionsView()
-                    } label: {
-                        Text(L10n.s(.viewAll, lang))
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            .foregroundColor(.vtDim)
-                            .tracking(1)
-                    }
-                }
-                .padding(.horizontal, 32)
+                Text(L10n.s(.recent, lang))
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundColor(.vtDim)
+                    .tracking(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 32)
 
                 List {
                     ForEach(dataService.recentSessions) { session in
@@ -382,7 +370,7 @@ struct HomeView: View {
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
                 .scrollDisabled(true)
-                .frame(minHeight: CGFloat(dataService.recentSessions.count) * 70)
+                .frame(minHeight: CGFloat(dataService.recentSessions.count) * 95)
             }
         }
     }

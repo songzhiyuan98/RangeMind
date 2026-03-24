@@ -10,6 +10,8 @@ struct SessionView: View {
     @State private var shakeOffset: CGFloat = 0
     @State private var elapsedTime: TimeInterval = 0
     @State private var timer: Timer?
+    @State private var emotionUndoVisible = false
+    @State private var emotionUndoTimer: Timer?
 
     var body: some View {
         ZStack {
@@ -29,14 +31,30 @@ struct SessionView: View {
                 SessionSummaryView(session: session)
             }
         }
+        .overlay(alignment: .bottom) {
+            if emotionUndoVisible {
+                emotionUndoBanner
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.bottom, 100)
+            } else if showUndoConfirmation {
+                undoConfirmationBanner
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.bottom, 100)
+            }
+        }
         .offset(x: shakeOffset)
-        .onChange(of: dataService.currentStatus) { _, newStatus in
-            if newStatus == .danger {
+        .onChange(of: dataService.tiltPhase) { _, newPhase in
+            if newPhase == .tilt {
                 triggerShake()
             }
         }
+        .onChange(of: dataService.currentHandRecords.count) { oldCount, newCount in
+            if newCount > oldCount, let last = dataService.currentHandRecords.last, last.emotionSignal != nil {
+                showEmotionUndo()
+            }
+        }
         .onAppear { startTimer() }
-        .onDisappear { stopTimer() }
+        .onDisappear { stopTimer(); emotionUndoTimer?.invalidate() }
     }
 
     // MARK: - Timer
@@ -190,7 +208,7 @@ struct SessionView: View {
                             .listStyle(.plain)
                             .scrollContentBackground(.hidden)
                             .scrollDisabled(true)
-                            .frame(minHeight: CGFloat(recordedHands.count) * 52)
+                            .frame(minHeight: CGFloat(recordedHands.count) * 64)
                         }
                         .padding(.top, 24)
                     }
@@ -210,19 +228,32 @@ struct SessionView: View {
                 .foregroundColor(.vtMuted)
                 .frame(width: 34, alignment: .leading)
 
-            HStack(spacing: 6) {
-                Text(hand.handType ?? "VPIP")
-                    .font(.system(size: 16, weight: .semibold, design: .monospaced))
-                    .foregroundColor(.vtText)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(hand.handType ?? "VPIP")
+                        .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.vtText)
 
-                if !hand.didVPIP {
-                    Text("FOLD")
+                    if !hand.didVPIP {
+                        Text("FOLD")
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .foregroundColor(.vtMuted)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color.vtSurface)
+                            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    }
+                }
+
+                // Emotion signal label
+                if let emotion = hand.emotionSignal {
+                    Text(emotionDisplayLabel(emotion))
                         .font(.system(size: 10, weight: .medium, design: .monospaced))
-                        .foregroundColor(.vtMuted)
+                        .foregroundColor(emotionDisplayColor(emotion))
                         .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(Color.vtSurface)
-                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        .padding(.vertical, 2)
+                        .background(emotionDisplayColor(emotion).opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
                 }
             }
 
@@ -250,6 +281,22 @@ struct SessionView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 13)
+    }
+
+    private func emotionDisplayLabel(_ emotion: EmotionSignal) -> String {
+        switch emotion {
+        case .badBeat: return "Bad Beat"
+        case .cooler: return "Cooler"
+        case .tilt: return "Tilt"
+        }
+    }
+
+    private func emotionDisplayColor(_ emotion: EmotionSignal) -> Color {
+        switch emotion {
+        case .badBeat: return .vtAmber
+        case .cooler: return .vtMuted
+        case .tilt: return .vtRed
+        }
     }
 
     // MARK: - Stats Strip
@@ -318,11 +365,12 @@ struct SessionView: View {
         case .normal: return .vtText
         case .warning: return .vtAmber
         case .danger: return .vtRed
+        case .recovering: return .vtTeal
         }
     }
 
     private var showAbnormalMode: Bool {
-        dataService.currentStatus != .normal
+        dataService.currentStatus != .normal && dataService.currentStatus != .recovering
     }
 
     // MARK: - Sample thresholds
@@ -344,8 +392,10 @@ struct SessionView: View {
     private var heroVPIPSection: some View {
         if isWarmingUp {
             warmUpHero
-        } else if dataService.tiltPhase == .cooldown {
-            cooldownHero
+        } else if dataService.tiltPhase == .tilt {
+            tiltHero
+        } else if dataService.tiltPhase == .recovering {
+            recoveringHero
         } else if showAbnormalMode && thirtyMinReliable {
             abnormalHero
         } else {
@@ -392,43 +442,23 @@ struct SessionView: View {
         }
     }
 
-    private var cooldownHero: some View {
+    private var tiltHero: some View {
         VStack(spacing: 12) {
-            Text(L10n.s(.cooldownMode, languageManager.language))
+            Text(L10n.s(.adjust, languageManager.language))
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .foregroundColor(.vtRed)
                 .tracking(2)
 
-            // Countdown ring
-            ZStack {
-                Circle()
-                    .stroke(Color.vtBorder, lineWidth: 2)
-                    .frame(width: 120, height: 120)
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                Text("\(dataService.sessionVPIP)")
+                    .font(.system(size: 96, weight: .ultraLight, design: .monospaced))
+                    .foregroundColor(.vtRed)
+                    .contentTransition(.numericText())
 
-                Circle()
-                    .trim(from: 0, to: dataService.cooldownTotal > 0 ? CGFloat(dataService.cooldownRemaining) / CGFloat(dataService.cooldownTotal) : 0)
-                    .stroke(Color.vtRed.opacity(0.7), style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                    .frame(width: 120, height: 120)
-                    .rotationEffect(.degrees(-90))
-                    .animation(.easeOut(duration: 0.3), value: dataService.cooldownRemaining)
-
-                VStack(spacing: 2) {
-                    Text("\(dataService.cooldownRemaining)")
-                        .font(.system(size: 40, weight: .ultraLight, design: .monospaced))
-                        .foregroundColor(.vtRed)
-                        .contentTransition(.numericText())
-
-                    Text("/ \(dataService.cooldownTotal)")
-                        .font(.system(size: 15, design: .monospaced))
-                        .foregroundColor(.vtDim)
-                }
+                Text("%")
+                    .font(.system(size: 32, weight: .ultraLight, design: .monospaced))
+                    .foregroundColor(.vtRed.opacity(0.5))
             }
-
-            Text(String(format: L10n.s(.cooldownSuggestion, languageManager.language), dataService.cooldownTotal))
-                .font(.system(size: 14, design: .monospaced))
-                .foregroundColor(.vtDim)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
 
             Text(L10n.s(.tightenRange2, languageManager.language))
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
@@ -440,6 +470,31 @@ struct SessionView: View {
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
                         .stroke(Color.vtRed.opacity(0.3), lineWidth: 1)
                 )
+        }
+    }
+
+    private var recoveringHero: some View {
+        VStack(spacing: 12) {
+            Text(L10n.s(.recoveringH, languageManager.language))
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundColor(.vtTeal)
+                .tracking(2)
+
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                Text("\(dataService.sessionVPIP)")
+                    .font(.system(size: 96, weight: .ultraLight, design: .monospaced))
+                    .foregroundColor(.vtTeal)
+                    .contentTransition(.numericText())
+
+                Text("%")
+                    .font(.system(size: 32, weight: .ultraLight, design: .monospaced))
+                    .foregroundColor(.vtTeal.opacity(0.5))
+            }
+
+            Text(L10n.s(.recoveringD, languageManager.language))
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(.vtMuted)
+                .multilineTextAlignment(.center)
         }
     }
 
@@ -509,10 +564,14 @@ struct SessionView: View {
         }
     }
 
-    private func buildCoachText(headline: String, detail: String, isDanger: Bool) -> AttributedString {
+    private func buildCoachText(headline: String, detail: String, messageType: TiltCoachMessage.MessageType) -> AttributedString {
         var label = AttributedString(headline.uppercased())
         label.font = .system(size: 11, weight: .bold, design: .monospaced)
-        label.foregroundColor = isDanger ? .vtRed : .vtAmber
+        switch messageType {
+        case .danger: label.foregroundColor = .vtRed
+        case .warning, .watch: label.foregroundColor = .vtAmber
+        case .recovering: label.foregroundColor = .vtTeal
+        }
 
         var separator = AttributedString(" · ")
         separator.font = .system(size: 11, design: .monospaced)
@@ -535,12 +594,20 @@ struct SessionView: View {
         case .normal:
             EmptyView()
 
-        case .warning, .danger:
-            let isDanger = status == .danger
-            Text(isDanger ? L10n.s(.adjust, languageManager.language) : L10n.s(.watch, languageManager.language))
+        case .warning:
+            Text(L10n.s(.watch, languageManager.language))
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundColor(isDanger ? .vtRed : .vtAmber)
+                .foregroundColor(.vtAmber)
                 .tracking(1.5)
+
+        case .danger:
+            Text(L10n.s(.adjust, languageManager.language))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundColor(.vtRed)
+                .tracking(1.5)
+
+        case .recovering:
+            EmptyView()
         }
     }
 
@@ -549,8 +616,7 @@ struct SessionView: View {
     @ViewBuilder
     private var behaviorAnalysis: some View {
         if let msg = dataService.activeCoachMessage {
-            let isDanger = msg.type == .danger
-            Text(buildCoachText(headline: msg.headline, detail: msg.detail, isDanger: isDanger))
+            Text(buildCoachText(headline: msg.headline, detail: msg.detail, messageType: msg.type))
                 .font(.system(size: 12, weight: .regular))
                 .multilineTextAlignment(.center)
                 .lineSpacing(2)
@@ -566,21 +632,146 @@ struct SessionView: View {
         }
     }
 
+    // MARK: - Emotion Undo
+
+    @State private var undoConfirmationText: String = ""
+
+    private var emotionUndoBanner: some View {
+        Button {
+            undoLastEmotion()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.uturn.backward")
+                    .font(.system(size: 12, weight: .medium))
+                Text(L10n.s(.emotionUndoLabel, languageManager.language))
+                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+            }
+            .foregroundColor(.vtText)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Color.vtElevated)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color.vtBorder, lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Banner shown briefly after undo confirming removal
+    private var undoConfirmationBanner: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 12))
+                .foregroundColor(.vtTeal)
+            Text(undoConfirmationText)
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundColor(.vtText)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Color.vtElevated)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.vtBorder, lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+    }
+
+    @State private var showUndoConfirmation = false
+
+    private func showEmotionUndo() {
+        withAnimation(.easeOut(duration: 0.2)) { emotionUndoVisible = true }
+        emotionUndoTimer?.invalidate()
+        emotionUndoTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { _ in
+            DispatchQueue.main.async {
+                withAnimation(.easeIn(duration: 0.2)) { self.emotionUndoVisible = false }
+            }
+        }
+    }
+
+    private func undoLastEmotion() {
+        guard let last = dataService.currentHandRecords.last, last.emotionSignal != nil else { return }
+        last.emotionSignal = nil
+
+        // Haptic feedback
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.success)
+
+        // Hide undo button, show confirmation
+        withAnimation(.easeIn(duration: 0.2)) {
+            emotionUndoVisible = false
+            undoConfirmationText = L10n.s(.emotionUndoMessage, languageManager.language)
+            showUndoConfirmation = true
+        }
+        emotionUndoTimer?.invalidate()
+
+        // Auto-hide confirmation after 1.5s
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            withAnimation(.easeIn(duration: 0.2)) { self.showUndoConfirmation = false }
+        }
+
+        // Re-check tilt phase after removing emotion
+        dataService.checkTiltPhaseTransition()
+    }
+
     // MARK: - No Session
 
     private var noSessionView: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 0) {
             Spacer()
 
-            Text(L10n.s(.noActiveSession, languageManager.language))
-                .font(.system(size: 14, design: .monospaced))
-                .foregroundColor(.vtMuted)
+            VStack(spacing: 28) {
+                // Shield icon
+                Image(systemName: "shield.lefthalf.filled")
+                    .font(.system(size: 44, weight: .thin))
+                    .foregroundColor(.vtDim)
 
+                VStack(spacing: 10) {
+                    Text(L10n.s(.liveEmptyTitle, languageManager.language))
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundColor(.vtText)
+
+                    Text(L10n.s(.liveEmptyBody, languageManager.language))
+                        .font(.system(size: 14))
+                        .foregroundColor(.vtMuted)
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(4)
+                }
+
+                // Feature list
+                VStack(alignment: .leading, spacing: 14) {
+                    featureRow(icon: "chart.bar.fill", text: L10n.s(.liveFeature1, languageManager.language))
+                    featureRow(icon: "exclamationmark.shield.fill", text: L10n.s(.liveFeature2, languageManager.language))
+                    featureRow(icon: "checkmark.message.fill", text: L10n.s(.liveFeature3, languageManager.language))
+                }
+                .padding(.top, 4)
+            }
+            .padding(.horizontal, 40)
+
+            Spacer()
+
+            // Subtle hint
             Text(L10n.s(.startFromHome, languageManager.language))
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundColor(.vtDim)
+                .padding(.bottom, 32)
+        }
+    }
 
-            Spacer()
+    private func featureRow(icon: String, text: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 14))
+                .foregroundColor(.vtMuted)
+                .frame(width: 20)
+
+            Text(text)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.vtMuted)
         }
     }
 

@@ -1,11 +1,7 @@
 import SwiftUI
 
-enum PlayerType: String, CaseIterable {
-    case nit = "极紧玩家"
-    case tight = "紧凶玩家"
-    case standard = "标准玩家"
-    case loose = "松凶玩家"
-    case veryLoose = "极松玩家"
+enum PlayerType: CaseIterable {
+    case nit, tight, standard, loose, veryLoose
 
     var vpipRange: ClosedRange<Int> {
         switch self {
@@ -17,13 +13,24 @@ enum PlayerType: String, CaseIterable {
         }
     }
 
-    var description: String {
-        switch self {
-        case .nit: return "0-14% 入池率"
-        case .tight: return "15-19% 入池率"
-        case .standard: return "20-24% 入池率"
-        case .loose: return "25-29% 入池率"
-        case .veryLoose: return "30%+ 入池率"
+    func displayName(_ lang: AppLanguage) -> String {
+        switch lang {
+        case .chinese:
+            switch self {
+            case .nit: return "极紧玩家"
+            case .tight: return "紧凶玩家"
+            case .standard: return "标准玩家"
+            case .loose: return "松凶玩家"
+            case .veryLoose: return "极松玩家"
+            }
+        case .english:
+            switch self {
+            case .nit: return "Nit"
+            case .tight: return "TAG"
+            case .standard: return "Standard"
+            case .loose: return "LAG"
+            case .veryLoose: return "Very Loose"
+            }
         }
     }
 

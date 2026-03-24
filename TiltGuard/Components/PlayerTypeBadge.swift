@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PlayerTypeBadge: View {
     let type: PlayerType
+    var lang: AppLanguage = .english
 
     var body: some View {
         HStack(spacing: 6) {
@@ -9,7 +10,7 @@ struct PlayerTypeBadge: View {
                 .fill(type.color)
                 .frame(width: 5, height: 5)
 
-            Text(type.rawValue)
+            Text(type.displayName(lang))
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .foregroundColor(.vtMuted)
         }

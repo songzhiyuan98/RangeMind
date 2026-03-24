@@ -61,20 +61,38 @@ struct WelcomeView: View {
         VStack(spacing: 0) {
             Spacer()
 
-            VStack(spacing: 24) {
-                Text(L10n.s(.welcomeTitle, lang))
-                    .font(.system(size: 30, weight: .bold))
+            VStack(spacing: 32) {
+                // App icon
+                Image(systemName: "shield.lefthalf.filled")
+                    .font(.system(size: 56, weight: .thin))
                     .foregroundColor(.vtText)
                     .opacity(appeared ? 1 : 0)
-                    .offset(y: appeared ? 0 : 12)
+                    .scaleEffect(appeared ? 1 : 0.8)
 
-                Text(L10n.s(.welcomeSubtitle, lang))
-                    .font(.system(size: 16))
-                    .foregroundColor(.vtMuted)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(4)
-                    .opacity(appeared ? 1 : 0)
-                    .offset(y: appeared ? 0 : 12)
+                VStack(spacing: 12) {
+                    Text(L10n.s(.welcomeTitle, lang))
+                        .font(.system(size: 34, weight: .bold))
+                        .foregroundColor(.vtText)
+                        .opacity(appeared ? 1 : 0)
+                        .offset(y: appeared ? 0 : 12)
+
+                    Text(L10n.s(.welcomeSubtitle, lang))
+                        .font(.system(size: 16))
+                        .foregroundColor(.vtMuted)
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(5)
+                        .opacity(appeared ? 1 : 0)
+                        .offset(y: appeared ? 0 : 12)
+                }
+
+                // Feature pills
+                VStack(spacing: 10) {
+                    welcomeFeaturePill(L10n.s(.welcomeFeature1, lang))
+                    welcomeFeaturePill(L10n.s(.welcomeFeature2, lang))
+                    welcomeFeaturePill(L10n.s(.welcomeFeature3, lang))
+                }
+                .opacity(appeared ? 1 : 0)
+                .offset(y: appeared ? 0 : 16)
             }
             .padding(.horizontal, 32)
 
@@ -86,6 +104,18 @@ struct WelcomeView: View {
         }
     }
 
+    private func welcomeFeaturePill(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 13, weight: .medium, design: .monospaced))
+            .foregroundColor(.vtMuted)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(Color.vtBorder, lineWidth: 1)
+            )
+    }
+
     // MARK: - Page 2: What the app does
 
     private var detectPage: some View {
@@ -93,7 +123,7 @@ struct WelcomeView: View {
             Spacer()
 
             VStack(spacing: 32) {
-                VStack(spacing: 12) {
+                VStack(spacing: 14) {
                     Text(L10n.s(.onboardingDetectTitle, lang))
                         .font(.system(size: 28, weight: .bold))
                         .foregroundColor(.vtText)
@@ -102,23 +132,16 @@ struct WelcomeView: View {
                         .font(.system(size: 15))
                         .foregroundColor(.vtMuted)
                         .multilineTextAlignment(.center)
-                        .lineSpacing(4)
+                        .lineSpacing(5)
                 }
 
-                // Three feature icons
-                HStack(spacing: 20) {
-                    featureIcon(
-                        icon: "exclamationmark.triangle",
-                        label: L10n.s(.tiltAlert, lang)
-                    )
-                    featureIcon(
-                        icon: "chart.line.uptrend.xyaxis",
-                        label: "VPIP"
-                    )
-                    featureIcon(
-                        icon: "shield.checkered",
-                        label: L10n.s(.disciplineScore, lang)
-                    )
+                // Detector visual
+                VStack(spacing: 8) {
+                    detectorRow(icon: "flame.fill", label: "Loss Chase", color: .vtRed)
+                    detectorRow(icon: "arrow.triangle.branch", label: "Style Drift", color: .vtAmber)
+                    detectorRow(icon: "bitcoinsign.circle.fill", label: "Big Pot", color: .vtAmber)
+                    detectorRow(icon: "arrow.up.right", label: "Win Tilt", color: .vtTeal)
+                    detectorRow(icon: "chart.line.uptrend.xyaxis", label: "VPIP Drift", color: .vtMuted)
                 }
             }
             .padding(.horizontal, 32)
@@ -131,6 +154,29 @@ struct WelcomeView: View {
         }
     }
 
+    private func detectorRow(icon: String, label: String, color: Color) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 14))
+                .foregroundColor(color)
+                .frame(width: 24)
+
+            Text(label)
+                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                .foregroundColor(.vtText)
+
+            Spacer()
+
+            Circle()
+                .fill(color.opacity(0.5))
+                .frame(width: 6, height: 6)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Color.vtSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
     // MARK: - Page 3: Sign In
 
     private var signInPage: some View {
@@ -139,14 +185,15 @@ struct WelcomeView: View {
 
             VStack(spacing: 16) {
                 Text(L10n.s(.onboardingSignInTitle, lang))
-                    .font(.system(size: 28, weight: .bold))
+                    .font(.system(size: 26, weight: .bold))
                     .foregroundColor(.vtText)
+                    .multilineTextAlignment(.center)
 
                 Text(L10n.s(.onboardingSignInBody, lang))
                     .font(.system(size: 15))
                     .foregroundColor(.vtMuted)
                     .multilineTextAlignment(.center)
-                    .lineSpacing(4)
+                    .lineSpacing(5)
             }
             .padding(.horizontal, 32)
 
@@ -221,26 +268,6 @@ struct WelcomeView: View {
         }
     }
 
-    private func featureIcon(icon: String, label: String) -> some View {
-        VStack(spacing: 10) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(Color.vtBorder, lineWidth: 1)
-                    .frame(width: 56, height: 56)
-
-                Image(systemName: icon)
-                    .font(.system(size: 22, weight: .light))
-                    .foregroundColor(.vtText)
-            }
-
-            Text(label)
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundColor(.vtDim)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        }
-        .frame(maxWidth: .infinity)
-    }
 
     private func completeOnboarding() {
         UserDefaults.standard.set(true, forKey: "has_completed_onboarding")

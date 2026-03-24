@@ -13,6 +13,8 @@ struct VPIPInputView: View {
     // Pro features (VPIP only)
     @State private var bbAmountText: String = ""
     @State private var selectedEmotion: EmotionSignal? = nil
+    @State private var showEmotionConfirm: Bool = false
+    @State private var pendingEmotion: EmotionSignal? = nil
     @AppStorage("vt_gto_advice_enabled") private var gtoAdviceEnabled = true
 
     private var lang: AppLanguage { languageManager.language }
@@ -192,33 +194,73 @@ struct VPIPInputView: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 16)
 
-            // Emotion signal row
+            // Divider between BB and emotion
+            Rectangle()
+                .fill(Color.vtBorder)
+                .frame(height: 0.5)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 12)
+
+            // Emotion hint
+            Text(L10n.s(.emotionHint, lang))
+                .font(.system(size: 10, weight: .regular))
+                .foregroundColor(.vtDim)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
+
+            // Emotion signal row with strength labels
             HStack(spacing: 6) {
                 ForEach(EmotionSignal.allCases) { emotion in
                     let isActive = selectedEmotion == emotion
                     Button {
-                        withAnimation(.easeOut(duration: 0.12)) {
-                            selectedEmotion = isActive ? nil : emotion
+                        if isActive {
+                            withAnimation(.easeOut(duration: 0.12)) {
+                                selectedEmotion = nil
+                            }
+                        } else {
+                            pendingEmotion = emotion
+                            showEmotionConfirm = true
                         }
                     } label: {
-                        Text(emotionLabel(emotion))
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(isActive ? .vtBlack : .vtMuted)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(isActive ? emotionAccent(emotion) : Color.clear)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .stroke(isActive ? Color.clear : Color.vtBorder, lineWidth: 1)
-                            )
-                            .contentShape(Rectangle())
+                        VStack(spacing: 3) {
+                            Text(emotionLabel(emotion))
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(isActive ? .vtBlack : .vtMuted)
+                            Text(emotionStrengthLabel(emotion))
+                                .font(.system(size: 9, weight: .regular))
+                                .foregroundColor(isActive ? .vtBlack.opacity(0.7) : .vtDim)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(isActive ? emotionAccent(emotion) : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(isActive ? Color.clear : Color.vtBorder, lineWidth: 1)
+                        )
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 24)
+            .alert(emotionConfirmTitle, isPresented: $showEmotionConfirm) {
+                Button(L10n.s(.emotionConfirmCancel, lang), role: .cancel) {
+                    pendingEmotion = nil
+                }
+                Button(L10n.s(.emotionConfirmOK, lang)) {
+                    if let emotion = pendingEmotion {
+                        withAnimation(.easeOut(duration: 0.12)) {
+                            selectedEmotion = emotion
+                        }
+                    }
+                    pendingEmotion = nil
+                }
+            } message: {
+                Text(emotionConfirmBody)
+            }
 
             // Result buttons
             HStack(spacing: 10) {
@@ -313,6 +355,32 @@ struct VPIPInputView: View {
         case .badBeat: return L10n.s(.emotionBadBeat, lang)
         case .cooler: return L10n.s(.emotionCooler, lang)
         case .tilt: return L10n.s(.emotionTilt, lang)
+        }
+    }
+
+    private var emotionConfirmTitle: String {
+        guard let emotion = pendingEmotion else { return "" }
+        switch emotion {
+        case .badBeat: return L10n.s(.badBeatConfirmTitle, lang)
+        case .cooler: return L10n.s(.coolerConfirmTitle, lang)
+        case .tilt: return L10n.s(.tiltConfirmTitle, lang)
+        }
+    }
+
+    private var emotionConfirmBody: String {
+        guard let emotion = pendingEmotion else { return "" }
+        switch emotion {
+        case .badBeat: return L10n.s(.badBeatConfirmBody, lang)
+        case .cooler: return L10n.s(.coolerConfirmBody, lang)
+        case .tilt: return L10n.s(.tiltConfirmBody, lang)
+        }
+    }
+
+    private func emotionStrengthLabel(_ emotion: EmotionSignal) -> String {
+        switch emotion {
+        case .badBeat: return L10n.s(.emotionMildSignal, lang)
+        case .cooler: return L10n.s(.emotionModerateSignal, lang)
+        case .tilt: return L10n.s(.emotionStrongSignal, lang)
         }
     }
 

@@ -307,7 +307,7 @@ struct StatsView: View {
                     let playerType = PlayerType.from(vpip: dataService.lifetimeVPIP)
                     rowDivider
                     HStack {
-                        Text(playerType.rawValue)
+                        Text(playerType.displayName(lang))
                             .font(.system(size: 15, weight: .medium))
                             .foregroundColor(.vtText)
 
@@ -317,7 +317,7 @@ struct StatsView: View {
                             Circle()
                                 .fill(playerType.color)
                                 .frame(width: 5, height: 5)
-                            Text(playerType.description)
+                            Text("\(playerType.vpipRange.lowerBound)-\(playerType.vpipRange.upperBound)%")
                                 .font(.system(size: 13))
                                 .foregroundColor(.vtDim)
                         }

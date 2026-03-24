@@ -4,7 +4,9 @@ import AuthenticationServices
 
 enum TiltPhase: Equatable {
     case normal
-    case cooldown
+    case watch
+    case tilt
+    case recovering
 }
 
 @MainActor
@@ -85,19 +87,19 @@ final class DataService {
         baselinePercent + 10.0
     }
 
-    /// Warning threshold varies by game mode
-    var warningThreshold: Int {
+    /// Watch threshold (V6: weighted scoring, ~58% of old values)
+    var watchThreshold: Double {
         switch sessionGameMode {
-        case .cash: return 6
-        case .tournament: return 5
+        case .cash: return 4.0
+        case .tournament: return 3.0
         }
     }
 
-    /// Danger threshold varies by game mode + style
-    var dangerThreshold: Int {
+    /// Tilt threshold (V6: weighted scoring)
+    var tiltThreshold: Double {
         switch sessionGameMode {
-        case .cash: return sessionTableStyle == .friendly ? 10 : 9
-        case .tournament: return 8
+        case .cash: return sessionTableStyle == .friendly ? 7.0 : 6.0
+        case .tournament: return 5.0
         }
     }
 
@@ -111,23 +113,14 @@ final class DataService {
         }
     }
 
-    /// Cooldown length varies by game mode
-    var cooldownLength: Int {
-        switch sessionGameMode {
-        case .cash: return 5
-        case .tournament: return 4
-        }
-    }
+    // cooldownLength removed in V6 — state machine drives recovery naturally
 
-    // Cooldown system (2-state: normal → cooldown)
+    // V6: 4-state tilt detection
     private(set) var tiltPhase: TiltPhase = .normal
-    private(set) var phaseStartHandCount: Int = 0
-    private(set) var cooldownRemaining: Int = 0
-    private(set) var cooldownTotal: Int = 0
-    private var cooldownExtension: Int = 5
-    private var cooldownAlreadyExtended: Bool = false
-    private var cooldownGracePeriod: Int = 5
-    private var lastCooldownEndHandCount: Int = 0
+    private(set) var previousTiltPhase: TiltPhase = .normal
+    private(set) var lastRecoveryScore: Double = 0
+    private(set) var lastLossPoints: Double = 0
+    private(set) var lastBehaviorPoints: Double = 0
 
     // MARK: - User / Account
 
@@ -779,7 +772,7 @@ final class DataService {
         return totalBB > 0
     }
 
-    // MARK: - Risk Score Tilt Detection (V5)
+    // MARK: - Risk Score Tilt Detection (V6: Decay-Weighted + Recovery)
 
     private let premiumHands: Set<String> = [
         "AA", "KK", "QQ", "JJ", "TT", "99",
@@ -787,134 +780,321 @@ final class DataService {
         "AKo", "AQo"
     ]
 
+    /// Decay weights for positions 1 (newest) to 8 (oldest)
+    private let decayWeights: [Double] = [1.00, 0.85, 0.72, 0.60, 0.50, 0.40, 0.32, 0.25]
+
     /// Classify a hand using the percentile-based baseline/tolerance system
     private func classifyHand(_ handType: String) -> HandPercentile.Classification {
         return HandPercentile.classify(handType, baseline: baselinePercent, tolerance: tolerancePercent)
     }
 
-    /// Calculate risk score from last 8 hands using percentile-based classification
-    ///
-    /// Scoring per hand:
-    /// - VPIP: +1
-    /// - Edge range hand: +1 (additional)
-    /// - Deviation hand: +2 (additional)
-    /// - Consecutive VPIP ≥3: +2 (bonus, once)
-    /// - Loss ≥30BB: +2
-    /// - Loss ≥80BB: +3
-    /// - Emotion signals (5-hand decay): Bad Beat +2, Cooler +2, Tilt +4
-    /// - VPIP-only cap: if no deviation/loss/emotion, total capped at 4
-    func calculateRiskScore() -> (total: Int, lossPoints: Int, behaviorPoints: Int) {
+    /// Check if a hand represents "normal behavior"
+    func isNormalBehavior(_ hand: HandRecordData) -> Bool {
+        // Has active tilt emotion signal → not normal
+        if hand.emotionSignal == .tilt { return false }
+
+        if !hand.didVPIP {
+            // fold without bad emotion is normal
+            return hand.emotionSignal == nil || hand.emotionSignal == .badBeat || hand.emotionSignal == .cooler
+        }
+
+        // VPIP hand: check classification
+        if let ht = hand.handType {
+            let classification = classifyHand(ht)
+            if classification == .deviation { return false }
+        }
+
+        // Big loss → not normal
+        if let bb = hand.bbResult, bb <= -30 { return false }
+
+        return true
+    }
+
+    /// Calculate weighted risk score from last 8 hands (V6)
+    func calculateWeightedRiskScore() -> (weightedRisk: Double, lossPoints: Double, behaviorPoints: Double) {
         let recent = Array(currentHandRecords.suffix(8))
         guard recent.count >= 5 else { return (0, 0, 0) }
 
-        var total = 0
-        var lossPoints = 0
-        var behaviorPoints = 0
+        var weightedRisk: Double = 0
+        var lossPoints: Double = 0
+        var behaviorPoints: Double = 0
         var consecutiveVPIP = 0
         var maxConsecutiveVPIP = 0
         var hasDeviation = false
         var hasLoss = false
         var hasEmotion = false
 
-        for hand in recent {
+        // Index 0 = newest hand, index N = oldest hand
+        let reversed = Array(recent.reversed())
+        for (i, hand) in reversed.enumerated() {
+            let weight = i < decayWeights.count ? decayWeights[i] : 0.25
+            var handRisk: Double = 0
+            var handLoss: Double = 0
+            var handBehavior: Double = 0
+
             if hand.didVPIP {
                 consecutiveVPIP += 1
                 maxConsecutiveVPIP = max(maxConsecutiveVPIP, consecutiveVPIP)
 
                 // Base VPIP: +1
-                total += 1
-                behaviorPoints += 1
+                handRisk += 1
+                handBehavior += 1
 
-                // Hand classification: edge +1, deviation +2
+                // Hand classification
                 if let ht = hand.handType {
                     let classification = classifyHand(ht)
                     switch classification {
                     case .baseline:
                         break
                     case .edge:
-                        total += 1
-                        behaviorPoints += 1
+                        handRisk += 1
+                        handBehavior += 1
                         hasDeviation = true
                     case .deviation:
-                        total += 2
-                        behaviorPoints += 2
+                        handRisk += 2
+                        handBehavior += 2
                         hasDeviation = true
                     }
                 }
 
-                // Single hand loss ≥80BB: +3, ≥30BB: +2
+                // Single hand loss (non-stacking: ≥80 takes +3, ≥30 takes +2)
                 if let bb = hand.bbResult {
                     if bb <= -80 {
-                        total += 3
-                        lossPoints += 3
+                        handRisk += 3
+                        handLoss += 3
                         hasLoss = true
                     } else if bb <= -30 {
-                        total += 2
-                        lossPoints += 2
+                        handRisk += 2
+                        handLoss += 2
                         hasLoss = true
                     }
                 }
             } else {
                 consecutiveVPIP = 0
             }
+
+            // Emotion signals within this hand (5-hand window check)
+            if let emotion = hand.emotionSignal {
+                let emotionWindow = Array(currentHandRecords.suffix(5))
+                if emotionWindow.contains(where: { $0.id == hand.id }) {
+                    hasEmotion = true
+                    switch emotion {
+                    case .badBeat:
+                        handRisk += 2
+                        handLoss += 2
+                    case .cooler:
+                        handRisk += 2
+                        handLoss += 2
+                    case .tilt:
+                        handRisk += 4
+                        handBehavior += 4
+                    }
+                }
+            }
+
+            weightedRisk += handRisk * weight
+            lossPoints += handLoss * weight
+            behaviorPoints += handBehavior * weight
         }
 
-        // Consecutive VPIP bonus: trigger varies by table size
+        // Global bonus: consecutive VPIP (not weighted)
         if maxConsecutiveVPIP >= consecutiveVPIPTrigger {
-            total += 2
+            weightedRisk += 2
             behaviorPoints += 2
         }
 
-        // Emotion signals (5-hand decay window)
-        let emotionWindow = Array(currentHandRecords.suffix(5))
-        for hand in emotionWindow {
-            if let emotion = hand.emotionSignal {
-                hasEmotion = true
-                switch emotion {
-                case .badBeat:
-                    total += 2
-                    lossPoints += 2
-                case .cooler:
-                    total += 2
-                    lossPoints += 2
-                case .tilt:
-                    total += 4
-                    behaviorPoints += 4
-                }
-            }
-        }
-
-        // VPIP-only cap: if only VPIP without deviation/loss/emotion, cap at 4
+        // VPIP-only cap: if no deviation/loss/emotion, raw risk capped at 4
         if !hasDeviation && !hasLoss && !hasEmotion {
-            total = min(total, 4)
-            behaviorPoints = min(behaviorPoints, 4)
+            weightedRisk = min(weightedRisk, 4.0)
+            behaviorPoints = min(behaviorPoints, 4.0)
         }
 
-        return (total, lossPoints, behaviorPoints)
+        return (weightedRisk, lossPoints, behaviorPoints)
     }
 
-    /// Risk-score based tilt alert (Loss Tilt or Tech Tilt)
-    private var riskScoreAlert: TiltCoachMessage? {
-        guard sessionHands >= 8 else { return nil }
-        let score = calculateRiskScore()
-        guard score.total >= warningThreshold else { return nil }
+    /// Calculate weighted recovery score (V6)
+    func calculateWeightedRecoveryScore() -> Double {
+        let recent = Array(currentHandRecords.suffix(8))
+        guard recent.count >= 5 else { return 0 }
 
-        let isDanger = score.total >= dangerThreshold
-        let isLossDominant = score.lossPoints > score.behaviorPoints
+        let reversed = Array(recent.reversed()) // index 0 = newest
 
-        if isLossDominant {
+        // Recovery validity: at least 1 of the 2 most recent hands must be normal
+        let recentTwo = Array(reversed.prefix(2))
+        let recentNormalCount = recentTwo.filter { isNormalBehavior($0) }.count
+        guard recentNormalCount >= 1 else { return 0 }
+
+        var weightedRecovery: Double = 0
+
+        for (i, hand) in reversed.enumerated() {
+            let weight = i < decayWeights.count ? decayWeights[i] : 0.25
+            guard isNormalBehavior(hand) else { continue }
+
+            var recovery: Double = 0
+
+            if !hand.didVPIP {
+                // fold = +1.0
+                recovery += 1.0
+            } else {
+                // VPIP in baseline/tolerance = +1.25
+                recovery += 1.25
+            }
+
+            // Consecutive normal bonus: +0.5 if previous hand was also normal
+            if i + 1 < reversed.count && isNormalBehavior(reversed[i + 1]) {
+                recovery += 0.5
+            }
+
+            // No emotion signal: +0.25
+            if hand.emotionSignal == nil {
+                recovery += 0.25
+            }
+
+            weightedRecovery += recovery * weight
+        }
+
+        return weightedRecovery
+    }
+
+    /// Calculate net score (V6): risk - recovery
+    func calculateNetScore() -> (netScore: Double, weightedRisk: Double, weightedRecovery: Double, lossPoints: Double, behaviorPoints: Double) {
+        let risk = calculateWeightedRiskScore()
+        let recovery = calculateWeightedRecoveryScore()
+        let net = risk.weightedRisk - recovery
+        return (net, risk.weightedRisk, recovery, risk.lossPoints, risk.behaviorPoints)
+    }
+
+    /// Count high-risk deviations in last N hands
+    private func recentDeviationCount(_ n: Int) -> Int {
+        let recent = Array(currentHandRecords.suffix(n))
+        return recent.filter { hand in
+            guard hand.didVPIP, let ht = hand.handType else { return false }
+            return classifyHand(ht) == .deviation
+        }.count
+    }
+
+    /// Count normal hands in last N hands
+    private func recentNormalCount(_ n: Int) -> Int {
+        let recent = Array(currentHandRecords.suffix(n))
+        return recent.filter { isNormalBehavior($0) }.count
+    }
+
+    /// Check if the latest hand has a new deviation or emotion signal
+    private var latestHandIsDeviation: Bool {
+        guard let last = currentHandRecords.last else { return false }
+        if let emotion = last.emotionSignal, emotion == .tilt || emotion == .badBeat || emotion == .cooler {
+            return true
+        }
+        guard last.didVPIP, let ht = last.handType else { return false }
+        return classifyHand(ht) == .deviation
+    }
+
+    /// Check if the latest hand is a "correction" — a correct DECISION regardless of outcome.
+    /// Checks decision quality (hand in range, no emotion), NOT the BB result.
+    /// Used to block Watch → Tilt escalation and trigger positive feedback.
+    private var latestHandIsCorrection: Bool {
+        guard let last = currentHandRecords.last else { return false }
+        guard last.emotionSignal == nil else { return false }
+
+        if !last.didVPIP {
+            // Fold without emotion is always a correct decision
+            return true
+        }
+
+        // VPIP: hand must be within baseline/tolerance (not deviation)
+        if let ht = last.handType {
+            let classification = classifyHand(ht)
+            if classification == .deviation { return false }
+        }
+
+        return true
+    }
+
+    /// V6: Phase-based tilt alert message
+    private var phaseBasedAlert: TiltCoachMessage? {
+        guard sessionHands >= 5 else { return nil }
+
+        let isLossDominant = lastLossPoints > lastBehaviorPoints
+
+        switch tiltPhase {
+        case .normal:
+            // One-time positive feedback when just recovered from elevated state via fold
+            if previousTiltPhase != .normal && latestHandIsCorrection {
+                if let last = currentHandRecords.last, !last.didVPIP {
+                    return TiltCoachMessage(
+                        type: .watch,
+                        category: isLossDominant ? .lossTilt : .techTilt,
+                        headline: L10n.s(.normalReturnH, language),
+                        detail: L10n.s(.normalReturnD, language)
+                    )
+                }
+            }
+            return nil
+
+        case .watch:
+            // Correction = positive detail under the main status headline
+            let category: TiltCategory = isLossDominant ? .lossTilt : .techTilt
+            let headline = isLossDominant ? L10n.s(.lossTiltH, language) : L10n.s(.techTiltH, language)
+
+            if latestHandIsCorrection {
+                let isFold = currentHandRecords.last.map { !$0.didVPIP } ?? false
+                let detail = isFold
+                    ? L10n.s(.watchFoldD, language)
+                    : L10n.s(.watchCorrectionD, language)
+                return TiltCoachMessage(
+                    type: .watch,
+                    category: category,
+                    headline: isFold ? L10n.s(.watchFoldH, language) : headline,
+                    detail: detail
+                )
+            }
+
             return TiltCoachMessage(
-                type: isDanger ? .danger : .warning,
-                category: .lossTilt,
-                headline: L10n.s(.lossTiltH, language),
-                detail: isDanger ? L10n.s(.lossTiltDangerD, language) : L10n.s(.lossTiltWarnD, language)
+                type: .watch,
+                category: category,
+                headline: headline,
+                detail: isLossDominant ? L10n.s(.watchLossTiltD, language) : L10n.s(.watchTechTiltD, language)
             )
-        } else {
+
+        case .tilt:
+            let category: TiltCategory = isLossDominant ? .lossTilt : .techTilt
+            let headline = isLossDominant ? L10n.s(.lossTiltH, language) : L10n.s(.techTiltH, language)
+
+            if latestHandIsCorrection {
+                let isFold = currentHandRecords.last.map { !$0.didVPIP } ?? false
+                let detail = isFold
+                    ? L10n.s(.tiltFoldD, language)
+                    : L10n.s(.tiltCorrectionD, language)
+                return TiltCoachMessage(
+                    type: .danger,
+                    category: category,
+                    headline: isFold ? L10n.s(.tiltFoldH, language) : headline,
+                    detail: detail
+                )
+            }
+
             return TiltCoachMessage(
-                type: isDanger ? .danger : .warning,
+                type: .danger,
+                category: category,
+                headline: headline,
+                detail: isLossDominant ? L10n.s(.lossTiltDangerD, language) : L10n.s(.techTiltDangerD, language)
+            )
+
+        case .recovering:
+            if latestHandIsCorrection {
+                let isFold = currentHandRecords.last.map { !$0.didVPIP } ?? false
+                return TiltCoachMessage(
+                    type: .recovering,
+                    category: .techTilt,
+                    headline: isFold ? L10n.s(.recoveringFoldH, language) : L10n.s(.recoveringCorrectionH, language),
+                    detail: isFold ? L10n.s(.recoveringFoldD, language) : L10n.s(.recoveringCorrectionD, language)
+                )
+            }
+            return TiltCoachMessage(
+                type: .recovering,
                 category: .techTilt,
-                headline: L10n.s(.techTiltH, language),
-                detail: isDanger ? L10n.s(.techTiltDangerD, language) : L10n.s(.techTiltWarnD, language)
+                headline: L10n.s(.recoveringH, language),
+                detail: L10n.s(.recoveringD, language)
             )
         }
     }
@@ -994,85 +1174,110 @@ final class DataService {
         )
     }
 
-    // MARK: - Simplified Cooldown (2-state)
+    // MARK: - V6: 4-State Phase Transitions
 
-    /// Called after every hand record to check cooldown transitions
+    /// Called after every hand record to check phase transitions
     func checkTiltPhaseTransition() {
+        guard cooldownModeEnabled else { return }
+        guard currentHandRecords.count >= 5 else { return }
+
+        let scores = calculateNetScore()
+        let netScore = scores.netScore
+        let weightedRecovery = scores.weightedRecovery
+
+        // Store for UI display
+        lastLossPoints = scores.lossPoints
+        lastBehaviorPoints = scores.behaviorPoints
+
+        // Track previous phase for post-transition positive feedback
+        previousTiltPhase = tiltPhase
+
         switch tiltPhase {
         case .normal:
-            guard cooldownModeEnabled else { return }
-            guard sessionHands >= 8 else { return }
-
-            // Grace period: don't re-trigger too soon after cooldown ended
-            if lastCooldownEndHandCount > 0 && (sessionHands - lastCooldownEndHandCount) < cooldownGracePeriod {
-                return
+            // Normal → Watch: netScore >= watchThreshold
+            if netScore >= watchThreshold {
+                tiltPhase = .watch
             }
 
-            // Danger alert → immediate cooldown
-            if let msg = activeCoachMessage, msg.type == .danger {
-                tiltPhase = .cooldown
-                cooldownTotal = cooldownLength
-                cooldownRemaining = cooldownLength
-                cooldownAlreadyExtended = false
-                phaseStartHandCount = sessionHands
+        case .watch:
+            // Correction protection: if the latest hand is a clear correction,
+            // do NOT escalate to Tilt this hand. The user is actively adjusting.
+            let correctionBlocked = latestHandIsCorrection
+
+            // Watch → Tilt: netScore >= tiltThreshold OR 2 deviations in last 3 hands
+            // BUT blocked if latest hand is a correction
+            if !correctionBlocked && (netScore >= tiltThreshold || recentDeviationCount(3) >= 2) {
+                tiltPhase = .tilt
+            }
+            // Watch → Normal: netScore < watchThreshold
+            else if netScore < watchThreshold {
+                tiltPhase = .normal
             }
 
-        case .cooldown:
-            cooldownRemaining = max(0, cooldownTotal - (sessionHands - phaseStartHandCount))
+        case .tilt:
+            // Tilt → Recovering: netScore < tiltThreshold AND last 2 hands normal AND recovery rising
+            let last2Normal = recentNormalCount(2) >= 2
+            let recoveryRising = weightedRecovery > lastRecoveryScore
 
-            if cooldownRemaining <= 0 {
-                // Cooldown finished — check if still bad
-                let score = calculateRiskScore()
-                if score.total >= warningThreshold && !cooldownAlreadyExtended {
-                    // Extend once
-                    cooldownAlreadyExtended = true
-                    cooldownTotal += cooldownExtension
-                    cooldownRemaining = cooldownExtension
-                    phaseStartHandCount = sessionHands
+            if netScore < tiltThreshold && last2Normal && recoveryRising {
+                tiltPhase = .recovering
+            }
+
+        case .recovering:
+            // Recovering → Watch/Tilt: new deviation detected
+            if latestHandIsDeviation {
+                if netScore >= tiltThreshold {
+                    tiltPhase = .tilt
                 } else {
-                    // Done, back to normal
-                    lastCooldownEndHandCount = sessionHands
-                    tiltPhase = .normal
-                    phaseStartHandCount = 0
-                    cooldownTotal = 0
-                    cooldownRemaining = 0
+                    tiltPhase = .watch
                 }
             }
+            // Recovering → Normal: netScore < watchThreshold AND ≥3 of last 4 normal
+            else if netScore < watchThreshold && recentNormalCount(4) >= 3 {
+                tiltPhase = .normal
+            }
         }
+
+        // Update last recovery score for trend detection
+        lastRecoveryScore = weightedRecovery
     }
 
-    /// Reset cooldown state (called when session ends or starts)
+    /// Reset tilt state (called when session ends or starts)
     func resetTiltPhase() {
         tiltPhase = .normal
-        phaseStartHandCount = 0
-        cooldownRemaining = 0
-        cooldownTotal = 0
-        cooldownAlreadyExtended = false
-        lastCooldownEndHandCount = 0
+        previousTiltPhase = .normal
+        lastRecoveryScore = 0
+        lastLossPoints = 0
+        lastBehaviorPoints = 0
     }
 
     // MARK: - Aggregated Status & Alerts
 
-    /// Returns the active coach message: big pot first (event), then risk score
+    /// Returns the active coach message: big pot first (event), then phase-based
     var activeCoachMessage: TiltCoachMessage? {
         guard tiltAlertsEnabled else { return nil }
 
         // Big pot is independent event — always check first
         if let msg = bigPotAlert { return msg }
 
-        // Risk score based alert
-        return riskScoreAlert
+        // Phase-based alert (V6)
+        return phaseBasedAlert
     }
 
     var currentStatus: GlowStatus {
-        if tiltPhase == .cooldown { return .danger }
+        switch tiltPhase {
+        case .tilt: return .danger
+        case .watch: return .warning
+        case .recovering: return .recovering
+        case .normal: break
+        }
 
-        guard sessionHands >= 8 else { return .normal }
-
+        // Even if phase is normal, check for big pot alert
         if let msg = activeCoachMessage {
             switch msg.type {
             case .danger: return .danger
-            case .warning: return .warning
+            case .warning, .watch: return .warning
+            case .recovering: return .recovering
             }
         }
 
@@ -1081,10 +1286,8 @@ final class DataService {
 
     var currentAlert: TiltAlert? {
         guard let msg = activeCoachMessage else { return nil }
-        return TiltAlert(
-            type: msg.type == .danger ? .danger : .warning,
-            message: msg.headline
-        )
+        let alertType: TiltAlert.AlertType = (msg.type == .danger) ? .danger : .warning
+        return TiltAlert(type: alertType, message: msg.headline)
     }
 
     // MARK: - 统计数据
